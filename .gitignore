@@ -1,18 +1,41 @@
-# Byte-compiled / optimized / DLL files
+# Secrets and private configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credential*
+*secret*
+*token*.txt
+
+# Runtime state
+*.log
+*.jsonl
+*.db
+*.sqlite*
+jobs/
+raw_webhook_events/
+provider_usage.jsonl
+status.txt
+*_status.txt
+*_result.txt
+
+# Generated and local files
 __pycache__/
 *.py[cod]
-*$py.class
-
-# Virtual environment
 .venv/
 venv/
-
-# Environment files
-.env
-
-# Logs
-*.log
-
-# OS junk
+.pytest_cache/
+node_modules/
+output/
+tmp/
+temp/
 .DS_Store
 Thumbs.db
+
+# Private provider snapshots and backups
+*backup*
+*before_voice*
+*verified.json
+COPILOT-*.txt
+COPILOT-*.md

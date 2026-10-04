@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JARVIS v2</title>
+<style>
+:root{--bg:#0b1020;--panel:#121a33;--line:#24305a;--txt:#e7ecff;--dim:#8f9bc7;--acc:#4fd1ff;--warn:#ffb84d;--ok:#5be49b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.4 system-ui,Segoe UI,sans-serif;height:100vh;display:flex;flex-direction:column}
+header{padding:12px 20px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center;background:var(--panel);flex-shrink:0}
+header b{letter-spacing:.3em;color:var(--acc);font-size:16px}
+.top-section{display:flex;gap:1px;flex:1;min-height:0;border-top:1px solid var(--line)}
+
+/* LEFT: Reflex/Decision Panel (always visible, no scroll) */
+.reflex-panel{width:320px;border-right:1px solid var(--line);padding:12px;overflow-y:auto;background:#0d1328;flex-shrink:0}
+.reflex-panel h3{margin:0 0 8px;font-size:12px;letter-spacing:.2em;color:var(--acc);text-transform:uppercase}
+.reflex-row{margin:8px 0;padding:6px;border-radius:4px;background:rgba(79,209,255,.05)}
+.reflex-row .label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.1em}
+.reflex-row .value{font-size:13px;font-weight:600;color:var(--txt);margin-top:2px}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;background:#1d2a55;font-size:11px;margin-top:4px}
+.bar{height:4px;background:#1b2447;border-radius:2px;overflow:hidden;margin-top:4px}.bar i{display:block;height:100%;background:var(--acc)}
+.timing{font-size:11px;color:var(--dim);margin-top:12px;padding-top:8px;border-top:1px solid var(--line)}
+.timing-item{display:flex;justify-content:space-between;margin:2px 0}
+
+/* CENTER/RIGHT: Conversation + Input */
+.chat-section{display:flex;flex-direction:column;flex:1;min-width:0}
+#log{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth}
+.msg{max-width:800px;padding:10px 12px;border-radius:8px;word-wrap:break-word;line-height:1.5}
+.msg.user{align-self:flex-end;background:#1d2a55;border-left:3px solid var(--acc)}
+.msg.jarvis{background:var(--panel);border-left:3px solid var(--ok)}
+.msg.draft{background:var(--panel);border-left:3px solid var(--warn)}
+.route{font-size:11px;color:var(--dim);margin-top:4px}
+
+/* Input Area (fixed at bottom) */
+#input-area{display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--line);background:var(--panel);flex-shrink:0}
+textarea{flex:1;resize:none;height:44px;background:#0b1020;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:8px;font:inherit;font-family:inherit}
+textarea:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px rgba(79,209,255,.1)}
+button{background:var(--acc);color:#001;border:0;border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;font-size:13px}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.sec{background:var(--panel);color:var(--txt);border:1px solid var(--line)}
+button.confirm{background:var(--warn);margin-top:6px;padding:6px 12px;font-size:12px;width:100%}
+
+/* Responsive */
+@media(max-width:1000px){
+  .reflex-panel{width:260px}
+}
+@media(max-width:800px){
+  .top-section{flex-direction:column}
+  .reflex-panel{width:100%;border-right:0;border-bottom:1px solid var(--line);max-height:180px}
+}
+
+/* Thinking animation */
+.thinking{animation:pulse .8s infinite}
+@keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
+</style></head><body>
+
+<header>
+  <b>J.A.R.V.I.S.</b>
+  <span class="pill" id="st">ready</span>
+  <span style="flex:1"></span>
+  <label style="font-size:12px;color:var(--dim)"><input type="checkbox" id="speak"> speak replies</label>
+</header>
+
+<div class="top-section">
+  <!-- LEFT: Reflex / Decision Panel (always visible) -->
+  <div class="reflex-panel">
+    <h3>⚡ Routing Decision</h3>
+    <div id="rx-content">
+      <div class="reflex-row" style="opacity:.6"><div class="label">Waiting for request...</div></div>
+    </div>
+  </div>
+
+  <!-- CENTER/RIGHT: Conversation -->
+  <div class="chat-section">
+    <div id="log"><div class="msg jarvis">Good evening, Semaj. What do you need?</div></div>
+    <div id="input-area">
+      <textarea id="t" placeholder="Talk to JARVIS... (Enter to send, Shift+Enter for new line)"></textarea>
+      <button type="button" class="sec" id="mic" title="Voice">🎙</button>
+      <button id="go">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s),log=$('#log');
+
+function renderReflex(d,timing_ms) {
+  const html = `
+    <div class="reflex-row">
+      <div class="label">Lane</div>
+      <div class="value"><span class="pill">${d.lane || '?'}</span></div>
+    </div>
+    <div class="reflex-row">
+      <div class="label">Business</div>
+      <div class="value"><span class="pill">${d.business || '?'}</span></div>
+    </div>
+    <div class="reflex-row">
+      <div class="label">Stakes (send/delete)</div>
+      <div class="bar"><i style="width:${Math.round(d.stakes*100)}%"></i></div>
+      <div style="font-size:11px;color:var(--dim);margin-top:2px">${Math.round(d.stakes*100)}%</div>
+    </div>
+    <div class="reflex-row">
+      <div class="label">Code/System</div>
+      <div class="bar"><i style="width:${Math.round(d.is_code*100)}%"></i></div>
+    </div>
+    <div class="reflex-row">
+      <div class="label">Image</div>
+      <div class="bar"><i style="width:${Math.round(d.is_image*100)}%"></i></div>
+    </div>
+    <div class="reflex-row">
+      <div class="label">Routine (local model)</div>
+      <div class="bar"><i style="width:${Math.round(d.routine*100)}%"></i></div>
+    </div>
+    ${d.vault_note ? `<div class="reflex-row"><div class="label">Vault Note</div><div class="value" style="font-size:11px;word-break:break-all">${d.vault_note}</div></div>` : ''}
+    ${timing_ms ? `<div class="timing">
+      <div class="timing-item"><span>Routing</span><span>${timing_ms.routing_done}ms</span></div>
+      ${timing_ms.claude_start ? `<div class="timing-item"><span>Claude</span><span>${timing_ms.claude_end - timing_ms.claude_start}ms</span></div>` : ''}
+      <div class="timing-item"><span><b>Total</b></span><span><b>${Object.values(timing_ms).reduce((a,b)=>typeof b==='number'?a+b:a,0)}ms</b></span></div>
+    </div>` : ''}
+  `;
+  $('#rx-content').innerHTML = html;
+}
+
+function addMsg(cls, txt, route) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.textContent = txt;
+  if (route) {
+    const r = document.createElement('div');
+    r.className = 'route';
+    r.textContent = '→ ' + route;
+    d.appendChild(r);
+  }
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+  return d;
+}
+
+function say(t) {
+  if ($('#speak').checked && 'speechSynthesis' in window) {
+    speechSynthesis.cancel();
+    speechSynthesis.speak(new SpeechSynthesisUtterance(t.slice(0, 1200)));
+  }
+}
+
+async function post(u, b) {
+  const r = await fetch(u, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(b)});
+  return r.json();
+}
+
+let busy = false;
+function lock(on) {
+  busy = on;
+  $('#go').disabled = on;
+  $('#mic').disabled = on;
+  $('#st').textContent = on ? 'working…' : 'ready';
+}
+
+function confirmBtn(m, id) {
+  const b = document.createElement('button');
+  b.className = 'confirm';
+  b.textContent = 'Approve plan — no action yet';
+  b.onclick = async() => {
+    if (busy) return;
+    lock(true);
+    b.disabled = true;
+    b.textContent = 'recording approval…';
+    try {
+      const c = await post('/confirm', {id});
+      addMsg('jarvis', c.answer || c.error, c.route);
+      say(c.answer || '');
+    } finally {
+      lock(false);
+      b.remove();
+    }
+  };
+  m.appendChild(b);
+}
+
+async function send(text) {
+  text = text.trim();
+  if (!text || busy) return;
+  lock(true);
+  addMsg('user', text);
+  $('#t').value = '';
+  const thinking = addMsg('jarvis', 'Deciding…');
+  thinking.classList.add('thinking');
+  const t0 = Date.now();
+  const tick = setInterval(() => {
+    thinking.textContent = `Deciding… ${Math.round((Date.now() - t0) / 1000)}s`;
+  }, 1000);
+
+  try {
+    const r = await post('/ask', {text});
+    clearInterval(tick);
+    thinking.remove();
+    if (r.error) {
+      addMsg('jarvis', 'Error: ' + r.error);
+      return;
+    }
+    renderReflex(r.reflex, r.reflex.timing_ms);
+    const m = addMsg('jarvis', r.answer, r.route);
+    say(r.answer);
+    if (r.confirm_id) confirmBtn(m, r.confirm_id);
+  } catch (e) {
+    clearInterval(tick);
+    thinking.remove();
+    addMsg('jarvis', 'Could not reach JARVIS: ' + e);
+  } finally {
+    lock(false);
+  }
+}
+
+$('#t').onkeydown = e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    send($('#t').value);
+  }
+};
+$('#go').onclick = () => send($('#t').value);
+
+// Voice input
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+$('#mic').onclick = () => {
+  if (!SR) {
+    alert('Voice input needs Chrome or Edge.');
+    return;
+  }
+  if (rec) {
+    rec.stop();
+    return;
+  }
+  rec = new SR();
+  rec.lang = 'en-US';
+  rec.interimResults = true;
+  rec.continuous = false;
+  let finalText = '';
+  $('#st').textContent = 'listening…';
+  $('#mic').textContent = '⏹';
+  rec.onresult = e => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) finalText += r[0].transcript;
+      else interim += r[0].transcript;
+    }
+    $('#t').value = (finalText + ' ' + interim).trim();
+  };
+  rec.onend = () => {
+    rec = null;
+    $('#mic').textContent = '🎙';
+    $('#st').textContent = 'ready';
+    const t = ($('#t').value || '').trim();
+    if (t) send(t);
+  };
+  rec.onerror = () => {};
+  rec.start();
+};
+
+// Load history
+(async() => {
+  try {
+    const h = await fetch('/history').then(r => r.json());
+    for (const x of h) {
+      addMsg('user', x.q);
+      addMsg('jarvis', x.a, x.route);
+    }
+  } catch (e) {}
+})();
+</script></body></html>

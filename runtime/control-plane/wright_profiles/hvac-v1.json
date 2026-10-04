@@ -1,0 +1,31 @@
+{
+  "id": "hvac-v1",
+  "industry": "HVAC",
+  "demonstration_disclaimer": "You're speaking with the Wright Connector demonstration receptionist. I'll show how this could be configured for your type of business. No real service appointment will be dispatched from this demonstration.",
+  "greeting": "Thank you for calling Wright Connector HVAC. I'm Jarvis, your AI receptionist. How can I help you today?",
+  "services": ["heating repair", "cooling repair", "seasonal maintenance", "installation inquiry"],
+  "customer_language_aliases": {
+    "no cooling": ["ac is out", "not blowing cold", "ac died"],
+    "no heat": ["furnace won't turn on", "no heat", "heater broken"]
+  },
+  "required_caller_fields": ["name", "callback_number", "service_address", "issue", "urgency"],
+  "optional_caller_fields": ["email", "preferred_time", "sms_consent"],
+  "appointment_rules": {
+    "simulate_only": true,
+    "offer_window_hours": [9, 17],
+    "same_day_if_urgent": true
+  },
+  "escalation_rules": {
+    "urgent_conditions": ["no cooling", "vulnerable person in home", "water leak", "electrical smell", "smoke or fire", "gas or carbon monoxide concern"],
+    "on_urgent": "trigger demo owner alert, offer soonest simulated window, mark escalation record"
+  },
+  "prohibited_claims": ["exact pricing", "technician names", "guaranteed arrival time", "diagnosis of the underlying issue"],
+  "notification_rules": {
+    "customer_sms_on": "appointment_requested",
+    "owner_alert_on": "urgent_conditions_met"
+  },
+  "sms_wording": {
+    "customer": "Wright Connector demo: You requested a sample HVAC appointment confirmation for {time}. Reply STOP to end demo messages.",
+    "owner": "Wright Connector demo alert: Simulated HVAC urgent call received. No real dispatch occurred. Review the demo dashboard for details."
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "limits": {
+    "max_input_chars": 6000,
+    "max_output_chars": 6000,
+    "estimated_chars_per_token": 4,
+    "max_cloud_calls_per_request": 1,
+    "max_fallbacks_per_request": 0,
+    "daily_cloud_call_limit": 40
+  },
+  "providers": {
+    "claude": {"enabled": true, "cloud": true, "default_model": "haiku", "complex_model": "sonnet"},
+    "codex": {"enabled": true, "cloud": true, "default_model": null},
+    "hermes": {"enabled": true, "cloud": false, "default_model": "ornith-final"},
+    "openai_images": {"enabled": true, "cloud": true, "reason": null},
+    "midjourney_manual": {"enabled": true, "cloud": false, "reason": "Official Midjourney automation is unavailable; export prompts for manual submission."}
+  }
+}

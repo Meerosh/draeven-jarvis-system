@@ -1,218 +1,72 @@
-# Draeven Jarvis System 🚀
+# Draeven JARVIS System
 
-Welcome to your local Jarvis and business command center.
+This repository is the recovery and review source for the Draeven system running on Semaj's Windows computer.
 
-This repo is designed to help you integrate your favorite Dragon/HUD front end (Draeven) with a local multi-model AI system that can:
+It replaces the earlier port-8000 FastAPI prototype. That prototype remains available in Git history through commit `d3c38c7`.
 
-- handle business tasks
-- check Shopify/Etsy inventory and orders
-- send and manage email drafts
-- generate graphics for cards and packaging
-- help with coding and app building
-- keep your Obsidian notes as context
-- route work to the right model without wasting tokens
+## Current architecture
 
-This is made for a Windows setup with:
-- vanilla HTML/CSS/JavaScript front end
-- local Python backend
-- Ollama as the default local brain
-- optional ChatGPT / Claude / Gemini routing
-- Docker support if you want to expand later
+| Component | Repository path | Live location | Port |
+|---|---|---|---:|
+| Draeven HUD | `hud/` | `C:\Users\Arach\Documents\Jarvis\Citadel\desktop\jarvis-hud` | 4783 |
+| Front Door | `runtime/frontdoor/` | `C:\Users\Arach\my-agent\jarvis-frontdoor` | 4719 |
+| Laya router | `runtime/laya-engine/` | `C:\Users\Arach\my-agent\laya-engine` | 8090 |
+| Wright tools | `runtime/control-plane/` | `C:\Users\Arach\my-agent\jarvis-control-plane` | 8091 |
+| Ollama | external local service | installed separately | 11434 |
 
----
+The knowledge vault is deliberately separate from this code repository. Its live location is `C:\Users\Arach\Documents\Jarvis`.
 
-## What you are getting
+## Provider routing
 
-This repo includes:
-- a local FastAPI server
-- a smart router that chooses the best LLM for each job
-- sample config files for business, email, design, and developer agents
-- a Windows quick-start launcher
-- a Draeven integration example you can plug into your existing HUD
+- Lucien Voss: Claude Sonnet for strategy and research.
+- Garrick Thorne: Codex for operations and delivery.
+- Vaelis Nightweave: Claude Haiku for creative work.
+- Azrath Veyr: local Hermes for systems and automation.
+- Jev/OpenRouter and local Laya handle low-cost routing decisions.
 
----
+All text providers receive the same bounded, secret-free operating context. Paid cloud requests are limited to one provider call per request and a configured daily ceiling.
 
-## Quickest path
+## Security model
 
-### Option 1: easiest for you
-1. Open PowerShell
-2. Go to a folder you want to use, for example:
-   `cd Desktop`
-3. Run:
-   `git clone https://github.com/Meerosh/draeven-jarvis-system.git`
-4. Then:
-   `cd draeven-jarvis-system`
-5. Double-click:
-   `quick-start.bat`
+- Production credentials belong in Windows Credential Manager.
+- `.env` is a fallback and is ignored by Git.
+- The repository excludes logs, provider usage, call jobs, webhook events, databases, provider snapshots and generated output.
+- External actions require approval and provider evidence before Draeven reports success.
 
-If you do not use Git, just download the ZIP from the repo page and extract it. Then open the extracted folder and double-click `quick-start.bat`.
+## Verification
 
----
+Run from PowerShell:
 
-## What the startup script does
+```powershell
+python tests\verify_repository.py
+python -m unittest discover -s runtime\frontdoor -p "test_*.py"
+python -m unittest discover -s runtime\control-plane -p "test_*.py"
+python -m unittest discover -s hud -p "test_*.py"
+node --check hud\js\main.js
+node --check hud\js\voice.js
+```
 
-`quick-start.bat` will:
-- create a local virtual environment
-- install the required Python packages
-- copy `.env.example` to `.env` if needed
-- start the Jarvis API server locally on port 8000
+See [Recovery](docs/RECOVERY.md), [Architecture](docs/ARCHITECTURE.md), and [Security](docs/SECURITY.md).
 
-Then you point your Draeven UI at the local backend instead of sending everything straight to the public model APIs.
+## Repository worker
 
----
+Draeven now has an approval-gated repository worker. Its managed checkouts live outside the runtime at `C:\Users\Arach\Documents\Jarvis\Citadel\repositories`.
 
-## Default architecture
+Use these phrases in Draeven:
 
 ```text
-Draeven HUD (your existing UI)
-        |
-        v
-Local Jarvis/API server
-        |
-        v
-Smart router
-        +--> Ollama (default local brain)
-        +--> ChatGPT (for coding / difficult reasoning)
-        +--> Claude (for long-context work)
-        +--> Gemini (for creative / quick fallback)
+repo list
+repo clone https://github.com/owner/repository
+repo inspect repository
+repo implement repository: describe the requested change
+repo publish repository: concise commit message
 ```
 
----
+Listing and inspection are read-only. Clone, implementation and publication show a confirmation button. Implementation uses an isolated Codex run with workspace-only write access and leaves changes uncommitted for review. Publication scans for common credential files and high-confidence secret patterns before committing and pushing.
 
-## How to connect your HUD
+## Current limitations
 
-Your front end can send requests like this:
-
-```javascript
-const response = await fetch('http://localhost:8000/api/chat', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    message: userInput,
-    session_id: 'draeven-session-1'
-  })
-});
-
-const data = await response.json();
-console.log(data.reply);
-```
-
-See `gui-integration/DRAEVEN_SETUP.md` for the exact instructions for your existing Draeven HTML/JS setup.
-
----
-
-## Required tools
-
-You already have a lot of this:
-- Windows
-- Docker
-- Ollama
-- Python
-- your own Draeven GUI
-
-You will also need API keys if you want to use ChatGPT, Claude, or Gemini. Those are optional; your system still works with Ollama alone.
-
----
-
-## Repo structure
-
-```text
-.
-├─ README.md
-├─ SETUP_GUIDE.md
-├─ TROUBLESHOOTING.md
-├─ quick-start.bat
-├─ docker-compose.yml
-├─ requirements.txt
-├─ .env.example
-├─ .gitignore
-├─ config/
-│  ├─ jarvis-config.yaml
-│  ├─ llm-routing.yaml
-│  └─ agents-config.yaml
-├─ api/
-│  └─ server.py
-├─ gui-integration/
-│  ├─ DRAEVEN_SETUP.md
-│  └─ draeven-integration.js
-└─ .venv/
-```
-
----
-
-## Example use cases
-
-### Business operations
-- "Summarize my sales and flag what needs my attention"
-- "Check all pending orders and tell me which need approval"
-- "Review customer emails and draft replies"
-
-### E-commerce
-- "Check Shopify and Etsy inventory totals"
-- "Find low-stock items and suggest restock priorities"
-- "Create a marketing plan for my top products"
-
-### Design
-- "Generate a product card concept with my brand colors"
-- "Create packaging label copy for my bestselling item"
-- "Write a product blurb for Etsy and Shopify"
-
-### Coding
-- "Write a Python script to sync inventory"
-- "Create a small webhook receiver for orders"
-- "Build a lightweight internal tool for my business"
-
----
-
-## Token-saving strategy
-
-This is a very important part of your setup.
-
-You do not want to burn your paid model quota on simple work.
-
-This system routes work like this:
-- simple tasks -> Ollama locally
-- long document analysis -> Claude
-- coding tasks -> ChatGPT
-- creative work -> Gemini or local models
-
-That keeps your expensive subscriptions from getting used up too quickly.
-
----
-
-## Security and privacy
-
-This local system keeps your business logic on your machine.
-
-The backend is local-first, and you can configure which external providers you want to use.
-
----
-
-## Next steps
-
-1. Start with `quick-start.bat`
-2. Read `SETUP_GUIDE.md`
-3. Connect Draeven using `gui-integration/DRAEVEN_SETUP.md`
-4. Add your API keys if you want fallback providers
-5. Test a few tasks and then expand with your own workflows
-
----
-
-## Notes
-
-This is intentionally designed to be simple, because you said you wanted easier setup and less copy-paste pain.
-
-The goal is:
-- keep your GUI beautiful
-- keep your logic local and structured
-- avoid token waste
-- give you a working local command center
-
----
-
-If you want the fastest possible setup, do this:
-- run `quick-start.bat`
-- open the server docs at `http://localhost:8000/docs`
-- then follow the Draeven integration guide
-
-You are ready to go. 🚀
+- Wright's inbound Twilio route still needs a provider-side verification receipt.
+- Shopify's external app installation is complete, but Draeven's current runtime credential check is not verified.
+- Etsy's external app identity was verified previously, but private runtime OAuth is not verified.
+- General Front Door providers remain advisory/read-only. Repository edits use the separate approval-gated worker above.
