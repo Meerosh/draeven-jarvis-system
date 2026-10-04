@@ -32,6 +32,8 @@ def _json(req: urllib.request.Request, timeout: int = 20):
         with CLIENT.open(req, timeout=timeout) as response:
             return json.load(response), dict(response.headers)
     except urllib.error.HTTPError as exc:
+        if exc.code == 404 and "myshopify.com/admin/oauth/access_token" in req.full_url:
+            raise ConnectionError("Shopify store address was not recognized. Use the exact .myshopify.com address.") from None
         raise ConnectionError(f"Provider rejected the connection ({exc.code}).") from None
     except urllib.error.URLError:
         raise ConnectionError("Provider could not be reached from this computer.") from None
