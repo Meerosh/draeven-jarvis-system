@@ -3,15 +3,23 @@ from __future__ import annotations
 
 import base64
 import json
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
+
+import certifi
 
 from private_credentials import (
     load_etsy_connection, load_shopify_connection, load_twilio_connection,
 )
 
-CLIENT = urllib.request.build_opener()
+# Python's bundled OpenSSL path can point at an expired machine-wide certificate
+# bundle on Windows. Use certifi's maintained CA bundle and keep verification on.
+TLS_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+CLIENT = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=TLS_CONTEXT)
+)
 ELEVENLABS_TWILIO_URL = "https://api.us.elevenlabs.io/twilio/inbound_call"
 
 
