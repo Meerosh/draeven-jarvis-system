@@ -131,7 +131,6 @@ let backendStatus = 'Checking JARVIS…';
 const conversationContainer = $('#conversation-display');
 const conversationPanel = $('.conversation-section');
 const conversationToggle = $('#conversation-toggle');
-function openConversation(){conversationPanel.classList.add('open');conversationPanel.setAttribute('aria-hidden','false');conversationToggle.textContent='Hide conversation';}
 conversationToggle.onclick=()=>{const open=conversationPanel.classList.toggle('open');conversationPanel.setAttribute('aria-hidden',String(!open));conversationToggle.textContent=open?'Hide conversation':'Conversation';};
 $('#conversation-close').onclick=()=>{conversationPanel.classList.remove('open');conversationPanel.setAttribute('aria-hidden','true');conversationToggle.textContent='Conversation';};
 function displayMessage(role, text, provider = null) {
@@ -148,7 +147,7 @@ function displayMessage(role, text, provider = null) {
   conversationContainer.appendChild(entry);
   conversationContainer.hidden = false;
   conversationContainer.scrollTop = conversationContainer.scrollHeight;
-  openConversation();
+  if(!conversationPanel.classList.contains('open'))conversationToggle.textContent='Conversation •';
 }
 function restorePresence() {
   if(voiceListening){setState('listening','LISTENING','Speak your question, then pause.');return;}
@@ -324,7 +323,7 @@ $('#mic-button').onclick=()=>{
  if(isJarvisRequestPending){toast('JARVIS is still answering. Please wait.');return;}
  if(!voiceListening && $('#command-input').value.trim()){toast('Send or clear your typed question before using Talk.');return;}
  if(voiceListening){voiceController.listen();return;}
- openConversation();stopActivity();voiceController.listen();
+ stopActivity();voiceController.listen();
 };
 let pushToTalkHeld=false;
 const typingTarget=target=>target?.matches?.('input, textarea, select, button, [contenteditable="true"]');
@@ -333,7 +332,7 @@ document.addEventListener('keydown',event=>{
  event.preventDefault();
  if(pushToTalkHeld||isJarvisRequestPending||voiceSpeaking)return;
  if($('#command-input').value.trim()){toast('Send or clear your typed question before using push to talk.');return;}
- pushToTalkHeld=true;openConversation();stopActivity();voiceController.listen();
+ pushToTalkHeld=true;stopActivity();voiceController.listen();
 });
 document.addEventListener('keyup',event=>{
  if(event.code!=='Space'||!pushToTalkHeld)return;

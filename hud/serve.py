@@ -2,7 +2,7 @@
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit, unquote
-import html, json, secrets, socket, threading, time, urllib.request
+import html, json, re, secrets, socket, threading, time, urllib.request
 import eleven_voice
 import service_connections
 from private_credentials import (openai_key_is_configured, save_openai_key,
@@ -270,6 +270,14 @@ class Handler(SimpleHTTPRequestHandler):
         if not CHAT_LOCK.acquire(blocking=False):
             return self.send_json(409, {'error':'JARVIS is still answering. Please wait.'})
         try:
+            if (re.search(r'\bshopify\b', message, re.I)
+                    and re.search(r'\b(card|cards|catalog|products?|listings?|available|inventory|how many|count)\b', message, re.I)):
+                summary = service_connections.shopify_catalog_summary()
+                answer = (f"I checked Shopify live. You currently have {summary['active_greeting_cards']} active greeting-card listings. "
+                          f"Your store has {summary['active_products']} active products in total; the other active product is your Arcane Joining Packet. "
+                          f"{summary['digital_inventory_note']}")
+                return self.send_json(200, {'reply':answer, 'provider':'Shopify live read',
+                    'mode':'read-only', 'receipt':{'source':'Shopify Admin GraphQL','verified':True}})
             # Forward only text; never accept browser routing or approval overrides.
             agent = data.get('agent') if isinstance(data,dict) else None
             if agent is not None and agent not in {'lucien','garrick','vaelis','azrath'}:

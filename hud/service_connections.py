@@ -124,6 +124,45 @@ def validate_shopify(values: dict[str, str] | None = None) -> dict:
             "catalog_read": "products" in data.get("data", {})}
 
 
+def shopify_catalog_summary() -> dict:
+    """Read the live Shopify catalog and summarize active greeting-card listings."""
+    values = load_shopify_connection()
+    store = values.get("store", "").strip().removeprefix("https://").rstrip("/")
+    client_id = values.get("client_id", "").strip()
+    secret = values.get("client_secret", "").strip()
+    if not (store and client_id and secret):
+        raise ConnectionError("Shopify is not configured.")
+    token_req = urllib.request.Request(
+        f"https://{store}/admin/oauth/access_token",
+        data=urllib.parse.urlencode({"grant_type": "client_credentials",
+                                    "client_id": client_id,
+                                    "client_secret": secret}).encode(),
+        method="POST", headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    token_data, _ = _json(token_req)
+    token = token_data.get("access_token")
+    if not token:
+        raise ConnectionError("Shopify did not return an access token.")
+    query = json.dumps({"query": "{ products(first:250) { nodes { title status productType tags totalInventory } } }"}).encode()
+    req = urllib.request.Request(
+        f"https://{store}/admin/api/2026-07/graphql.json", data=query, method="POST",
+        headers={"Content-Type": "application/json", "X-Shopify-Access-Token": token},
+    )
+    data, _ = _json(req)
+    if data.get("errors"):
+        raise ConnectionError("Shopify accepted the connection but rejected the catalog read.")
+    products = data.get("data", {}).get("products", {}).get("nodes", [])
+    active = [item for item in products if item.get("status") == "ACTIVE"]
+    cards = [item for item in active if item.get("productType", "").strip().lower() == "greeting card"]
+    return {
+        "verified": True,
+        "active_products": len(active),
+        "active_greeting_cards": len(cards),
+        "card_titles": [item.get("title", "") for item in cards],
+        "digital_inventory_note": "These greeting cards are digital products, so Shopify reports inventory as zero rather than a physical stock count.",
+    }
+
+
 def validate_etsy(values: dict[str, str] | None = None) -> dict:
     values = values or load_etsy_connection()
     key = values.get("keystring", "").strip()

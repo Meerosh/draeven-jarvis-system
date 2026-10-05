@@ -33,6 +33,19 @@ class AdapterTests(unittest.TestCase):
             self.assertTrue(result['approval_required'])
             self.assertEqual(result['mode'],'approval-gated')
             upstream.assert_called_once_with('/ask',{'text':'My priority?','agent':None},timeout=720)
+    def test_shopify_catalog_question_uses_live_connector_instead_of_draft_model(self):
+        summary={'verified':True,'active_products':18,'active_greeting_cards':17,
+                 'card_titles':['Example'],
+                 'digital_inventory_note':'Digital products do not use physical inventory.'}
+        with patch.object(hud.service_connections,'shopify_catalog_summary',return_value=summary), \
+             patch.object(hud,'upstream') as upstream:
+            status,raw=self.request('/api/chat',{'message':'How many cards are available in Shopify?'})
+        result=json.loads(raw)
+        self.assertEqual(status,200)
+        self.assertIn('17 active greeting-card listings',result['reply'])
+        self.assertEqual(result['provider'],'Shopify live read')
+        self.assertTrue(result['receipt']['verified'])
+        upstream.assert_not_called()
     def test_offline_is_failure(self):
         with patch.object(hud,'upstream',side_effect=ConnectionRefusedError):
             self.assertEqual(self.request('/api/chat',{'message':'hello'})[0],502)
