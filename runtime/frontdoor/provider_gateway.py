@@ -1,15 +1,19 @@
-"""Cost-controlled provider selection and usage records for the JARVIS Front Door."""
+"""Cost-controlled provider selection and usage records for the JARVIS Front Door (v2, 2026-10-05)."""
 
 from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 import os
 import threading
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Optional
+
+# Get logger
+logger = logging.getLogger('jarvis.provider_gateway')
 
 
 class ProviderGatewayError(RuntimeError):
@@ -35,8 +39,9 @@ class ProviderGateway:
         self.root = Path(root)
         self.policy_path = self.root / "provider_policy.json"
         self.usage_path = self.root / "provider_usage.jsonl"
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # Upgrade to RLock for nested calls
         self.policy = json.loads(self.policy_path.read_text(encoding="utf-8"))
+        logger.info(f"ProviderGateway initialized from {self.root}")
 
     def status(self) -> dict:
         return {
@@ -73,6 +78,7 @@ class ProviderGateway:
         runner: Callable[[str, Optional[str]], str],
         *,
         model: Optional[str] = None,
+        max_retries: int = 2,
     ) -> ProviderResult:
         config = self.policy["providers"].get(provider)
         if not config or not config.get("enabled"):
@@ -89,27 +95,45 @@ class ProviderGateway:
         with self._lock:
             if is_cloud and self._today_cloud_calls() >= int(limits["daily_cloud_call_limit"]):
                 raise ProviderGatewayError("Daily cloud-call limit reached. Local and instant lanes remain available.")
-        started = time.monotonic()
-        answer = runner(prompt, model)
-        elapsed_ms = int((time.monotonic() - started) * 1000)
-        if not isinstance(answer, str) or not answer.strip():
-            raise ProviderGatewayError(f"{provider} returned no answer.")
-        answer = answer.strip()
-        if len(answer) > int(limits["max_output_chars"]):
-            answer = answer[: int(limits["max_output_chars"])].rstrip() + "\n\n[Response shortened by JARVIS usage controls.]"
-        chars_per_token = max(1, int(limits["estimated_chars_per_token"]))
-        result = ProviderResult(
-            answer=answer,
-            provider=provider,
-            model=model,
-            elapsed_ms=elapsed_ms,
-            estimated_input_tokens=(len(prompt) + chars_per_token - 1) // chars_per_token,
-            estimated_output_tokens=(len(answer) + chars_per_token - 1) // chars_per_token,
-            cloud_calls=1 if is_cloud else 0,
-        )
-        with self._lock:
-            self._record(result)
-        return result
+
+        # Retry logic with exponential backoff
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                started = time.monotonic()
+                answer = runner(prompt, model)
+                elapsed_ms = int((time.monotonic() - started) * 1000)
+
+                if not isinstance(answer, str) or not answer.strip():
+                    raise ProviderGatewayError(f"{provider} returned no answer.")
+
+                answer = answer.strip()
+                if len(answer) > int(limits["max_output_chars"]):
+                    answer = answer[: int(limits["max_output_chars"])].rstrip() + "\n\n[Response shortened by JARVIS usage controls.]"
+
+                chars_per_token = max(1, int(limits["estimated_chars_per_token"]))
+                result = ProviderResult(
+                    answer=answer,
+                    provider=provider,
+                    model=model,
+                    elapsed_ms=elapsed_ms,
+                    estimated_input_tokens=(len(prompt) + chars_per_token - 1) // chars_per_token,
+                    estimated_output_tokens=(len(answer) + chars_per_token - 1) // chars_per_token,
+                    cloud_calls=1 if is_cloud else 0,
+                )
+                with self._lock:
+                    self._record(result)
+                logger.debug(f"Provider {provider} succeeded on attempt {attempt + 1}")
+                return result
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    logger.warning(f"Provider {provider} attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Provider {provider} failed after {max_retries + 1} attempts: {last_error}")
+                    raise ProviderGatewayError(f"{provider} failed: {last_error}") from last_error
 
     def _today_cloud_calls(self) -> int:
         if not self.usage_path.exists():
@@ -126,8 +150,13 @@ class ProviderGateway:
         return count
 
     def _record(self, result: ProviderResult) -> None:
+        """Record provider usage with structured logging."""
         record = {"at": dt.datetime.now(dt.timezone.utc).isoformat(), **asdict(result)}
         record.pop("answer", None)
         self.usage_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.usage_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, separators=(",", ":")) + "\n")
+        try:
+            with self.usage_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, separators=(",", ":")) + "\n")
+            logger.debug(f"Recorded usage: {result.provider}/{result.model} - {result.elapsed_ms}ms")
+        except Exception as e:
+            logger.warning(f"Failed to record provider usage: {e}")
