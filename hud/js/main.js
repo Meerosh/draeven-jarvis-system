@@ -123,7 +123,7 @@ function setState(state,label,note){const presence=$('.presence');presence.class
 let activeCharacterLine=null;
 function stopActivity(){voiceEpoch++;if(voiceController)voiceController.stop();characterSpeechId=null;if(activeCharacterLine){activeCharacterLine.onstart=null;activeCharacterLine.onend=null;activeCharacterLine.onerror=null;activeCharacterLine=null;}$$('.agent-card.speaking').forEach(e=>e.classList.remove('speaking'));micRequest++;clearTimeout(previewTimer);if(window.speechSynthesis)window.speechSynthesis.cancel();if(micStream)micStream.getTracks().forEach(t=>t.stop());micStream=null;if(audioContext)audioContext.close().catch(()=>{});audioContext=null;cancelAnimationFrame(raf);$('#mic-button').classList.remove('active');$('#mic-button').setAttribute('aria-label','Talk to Draeven');$('#orb-stage').style.setProperty('--level',0);$$('.wave i').forEach(e=>e.style.height='');restorePresence();}
 function preview(){showDialog('<p class=\"eyebrow\">INTERACTION PREVIEW</p><h2>Give Draeven a voice.</h2><p>Explore the visual states. The speaking sample uses a voice supplied by your browser; it is not Draeven’s final voice or a live AI reply.</p><div class=\"dialog-controls\"><button class=\"bronze-button\" id=\"preview-listen\">Listening animation</button><button class=\"bronze-button\" id=\"preview-think\">Thinking animation</button><button class=\"bronze-button\" id=\"preview-speak\">Speak a sample</button><button class=\"bronze-button\" id=\"preview-stop\">Stop</button></div><p>Use Talk in the command bar for speech recognition. Your browser may process speech online.</p>');$('#preview-listen').onclick=()=>{stopActivity();$('#detail-dialog').close();setState('listening','LISTENING · VISUAL PREVIEW','Demonstration state. The microphone is not active.');previewTimer=setTimeout(stopActivity,6000);};$('#preview-think').onclick=()=>{stopActivity();$('#detail-dialog').close();setState('thinking','THINKING · VISUAL PREVIEW','Demonstration state. No AI request is running.');previewTimer=setTimeout(stopActivity,6000);};$('#preview-speak').onclick=()=>{stopActivity();$('#detail-dialog').close();if(!window.speechSynthesis){toast('Browser speech is unavailable.');return;}const utterance=new SpeechSynthesisUtterance('Welcome to the Citadel, Semaj. Your priorities are gathered. Your council awaits. What would you have me do?');utterance.rate=.87;utterance.pitch=.8;const voices=speechSynthesis.getVoices();const voice=voices.find(v=>/David|Daniel|George|James/i.test(v.name)&&/^en/i.test(v.lang))||voices.find(v=>/^en/i.test(v.lang));if(voice)utterance.voice=voice;utterance.onstart=()=>setState('speaking','SPEAKING · BROWSER PREVIEW','Visual rhythm follows playback state, not audio amplitude.');utterance.onend=()=>stopActivity();utterance.onerror=()=>{stopActivity();toast('Speech playback ended or was unavailable.');};speechSynthesis.speak(utterance);};$('#preview-stop').onclick=()=>{stopActivity();$('#detail-dialog').close();};}
-$('#preview-button').onclick=preview;
+if($('#preview-button'))$('#preview-button').onclick=preview;
 
 // JARVIS Front Door connection. Each question is independent; no fake session ID.
 let isJarvisRequestPending = false;
@@ -164,8 +164,8 @@ async function checkConnection() {
     const data = await response.json();
     healthState=data;
     const councilReady=Boolean(response.ok&&data.ok&&data.services?.frontdoor?.ready);
-    $('#council-connection').textContent=councilReady?'Connected':'Offline';
-    $('#council-connection-note').textContent=councilReady?'Four identities · provider routes ready':'Council routing unavailable';
+    if($('#council-connection'))$('#council-connection').textContent=councilReady?'Connected':'Offline';
+    if($('#council-connection-note'))$('#council-connection-note').textContent=councilReady?'Four identities · provider routes ready':'Council routing unavailable';
     $('#council-routing-note').textContent=councilReady?'Council routing is connected. Lucien, Garrick, Vaelis, and Azrath each use their assigned provider route. Their work remains advice or drafts until you approve a real action.':'Council routing is currently unavailable.';
     backendStatus = response.ok && data.ok
       ? 'JARVIS service reachable · answers and drafts. Ask a question to verify a response.'
@@ -325,6 +325,20 @@ $('#mic-button').onclick=()=>{
  if(voiceListening){voiceController.listen();return;}
  stopActivity();voiceController.listen();
 };
+let pushToTalkHeld=false;
+const typingTarget=target=>target?.matches?.('input, textarea, select, button, [contenteditable="true"]');
+document.addEventListener('keydown',event=>{
+ if(event.code!=='Space'||event.repeat||typingTarget(event.target)||document.querySelector('dialog[open]'))return;
+ event.preventDefault();
+ if(pushToTalkHeld||isJarvisRequestPending||voiceSpeaking)return;
+ if($('#command-input').value.trim()){toast('Send or clear your typed question before using push to talk.');return;}
+ pushToTalkHeld=true;stopActivity();voiceController.listen();
+});
+document.addEventListener('keyup',event=>{
+ if(event.code!=='Space'||!pushToTalkHeld)return;
+ event.preventDefault();pushToTalkHeld=false;voiceController.finishListening();
+});
+window.addEventListener('blur',()=>{if(pushToTalkHeld){pushToTalkHeld=false;voiceController.stop();}});
 $('#stop-voice').onclick=()=>{stopActivity();$('#voice-status').textContent=isJarvisRequestPending?'Voice stopped. JARVIS is still preparing the text answer.':'Voice stopped. Click Talk when ready.';};
 $('#read-reply').onclick=()=>{if(lastReply){stopActivity();voiceController.speak(lastReply,$('#reply-voice').value);}};
 try{$('#speak-replies').checked=localStorage.getItem('draeven-speak-replies')==='true';}catch{}

@@ -15,6 +15,13 @@ function createDraevenVoice(env, hooks) {
     }
     hooks.listening(false);
   }
+  function finishListening() {
+    clearTimeout(listenTimer);
+    if (!recognition) return;
+    status('Finishing your question…');
+    try { recognition.stop(); }
+    catch { stopListening(); status('The microphone could not finish cleanly. Please try again.'); }
+  }
   function stopSpeaking() {
     speechGeneration++;
     if(audioRequest){audioRequest.abort();audioRequest=null;}
@@ -126,5 +133,5 @@ function createDraevenVoice(env, hooks) {
     }
     status('Preparing spoken reply…');next();
   }
-  return {listen,speak,stop,recognitionSupported:!!Recognition,speechSupported:!!env.speechSynthesis};
+  return {listen,finishListening,speak,stop,recognitionSupported:!!Recognition,speechSupported:!!env.speechSynthesis};
 }

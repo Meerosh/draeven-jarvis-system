@@ -4,7 +4,7 @@ const context={setTimeout(fn){timers.set(++tid,fn);return tid;},clearTimeout(id)
 vm.createContext(context);vm.runInContext(fs.readFileSync(__dirname+'/js/voice.js','utf8'),context);
 function setup(supported=true){
  const events={texts:[],status:[],spoken:[],listening:[],speaking:[]};let current;
- class Recognition{constructor(){current=this;}start(){this.onstart?.();}abort(){this.aborted=true;}}
+ class Recognition{constructor(){current=this;}start(){this.onstart?.();}stop(){this.stopped=true;}abort(){this.aborted=true;}}
  class Utterance{constructor(text){this.text=text;}}
  const env={SpeechSynthesisUtterance:Utterance,speechSynthesis:{getVoices:()=>[],cancel(){},speak(line){events.spoken.push(line);line.onstart?.();}}};
  if(supported)env.SpeechRecognition=Recognition;
@@ -20,6 +20,7 @@ test('stop discards late recognition events',()=>{const x=setup();x.voice.listen
 test('permission denial cannot submit',()=>{const x=setup();x.voice.listen();const r=x.current;const ended=r.onend;r.onerror({error:'not-allowed'});ended();assert.equal(x.events.texts.length,0);assert.match(x.events.status.at(-1),/denied/);});
 test('unsupported recognition explains fallback',()=>{const x=setup(false);x.voice.listen();assert.match(x.events.status.at(-1),/unavailable/);});
 test('second click cancels listening',()=>{const x=setup();x.voice.listen();x.voice.listen();assert.equal(x.events.texts.length,0);assert.match(x.events.status.at(-1),/cancelled/);});
+test('push to talk release finishes and sends final speech',()=>{const x=setup();x.voice.listen();const r=x.current;r.onresult(result('Check the storefronts'));const ended=r.onend;x.voice.finishListening();assert.ok(r.stopped);ended();assert.deepEqual(x.events.texts,['Check the storefronts']);});
 test('speaking clears microphone and stops queued chunks',()=>{const x=setup();x.voice.listen();const r=x.current;x.voice.speak('First sentence. Second sentence.');assert.ok(r.aborted);const ended=x.events.spoken[0].onend;x.voice.stop();ended();assert.equal(x.events.spoken.length,1);});
 test('speech error offers manual replay',()=>{const x=setup();x.voice.speak('Hello');x.events.spoken[0].onerror();assert.match(x.events.status.at(-1),/Read last reply/);});
 test('listening timeout aborts capture',()=>{const x=setup();x.voice.listen();[...timers.values()][0]();assert.ok(x.current.aborted);assert.equal(x.events.texts.length,0);});
