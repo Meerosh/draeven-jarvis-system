@@ -46,10 +46,12 @@ def wright_tools_verified(ngrok):
         return False
 
 class Server(ThreadingHTTPServer):
-    allow_reuse_address = False
+    allow_reuse_address = True
     def server_bind(self):
-        if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        # Enable socket reuse to allow immediate restart after shutdown
+        # This prevents "Address already in use" errors on Windows and Unix
+        if hasattr(socket, 'SO_REUSEADDR'):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         super().server_bind()
 
 class Handler(SimpleHTTPRequestHandler):
