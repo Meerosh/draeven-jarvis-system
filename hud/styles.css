@@ -139,6 +139,14 @@ main{height:100vh;max-width:none;margin:0;padding:7px 10px 70px;overflow:hidden}
 @keyframes lava-listen{0%,100%{transform:scale(.96);filter:brightness(.82);box-shadow:0 0 24px #a32e2640}50%{transform:scale(1.075);filter:brightness(1.24);box-shadow:0 0 44px #ef5a395f}}
 @keyframes lava-think{0%,100%{transform:scale(.97);filter:brightness(.8);box-shadow:0 0 22px #9e302f36}50%{transform:scale(1.05);filter:brightness(1.08);box-shadow:0 0 38px #d1493058}}
 @keyframes lava-speak{0%,100%{transform:scale(.95);filter:brightness(.8);box-shadow:0 0 22px #9e302f38}50%{transform:scale(1.09);filter:brightness(1.32);box-shadow:0 0 48px #ff633d70}}
+
+/* Preserve each Council portrait's native 384×1024 ratio at every desktop height. */
+@media(min-width:901px){
+ .council-section{container-type:size}
+ .council-grid{flex:0 0 auto;width:min(900px,calc((100cqh - 86px)*1.5 + 36px));max-width:100%;align-items:start}
+ .agent-card,.large .agent-card{height:auto!important;max-height:none}
+ .agent-art,.large .agent-art{flex:none!important;width:100%;aspect-ratio:3/8!important;background-size:400% 100%!important;background-position:var(--position) top!important}
+}
 .orb-stage::before,.orb-stage::after{content:'';position:absolute;inset:-18px;border:2px solid #d2a567;border-radius:50%;opacity:0;pointer-events:none;z-index:4;box-shadow:0 0 18px #c96a3a55,inset 0 0 18px #c96a3a33}
 .state-listening .orb-stage::before{animation:mana-draw 1.45s ease-in infinite}.state-listening .orb-stage::after{animation:mana-draw 1.45s .72s ease-in infinite;border-style:dashed}
 .state-listening .orb{filter:brightness(1.08);box-shadow:0 0 32px #ef6a3c66}.state-listening .orbit{animation-direction:reverse;animation-duration:7s;border-color:#efb36e}
@@ -154,5 +162,4 @@ main{height:100vh;max-width:none;margin:0;padding:7px 10px 70px;overflow:hidden}
  .business-panel{overflow:hidden}.business-panel .panel-heading{padding:7px 12px}.business-row{padding:4px 12px}.business-row h3{line-height:1.2}.business-row small{line-height:1.25}.business-panel .panel-foot{padding:5px 12px}
  .right-stack{display:block}.right-stack .focus-panel{height:100%;overflow:hidden}.right-stack .message-panel{display:none}
  .section-title h2{color:#ead4af;text-shadow:0 2px 10px #000,0 0 16px #c4935555}
- .council-grid{width:min(900px,100%)}
 }
