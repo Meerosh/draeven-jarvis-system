@@ -209,8 +209,12 @@ async function askJarvis(userInput) {
     lastReply=data.reply;$('#read-reply').disabled=false;spokenAnswer=data.reply;
     if(data.approval_required&&data.confirm_id){
       const entry=document.createElement('div');entry.className='conversation-entry role-assistant';
-      entry.innerHTML='<div class="message-label">Approval needed</div><div class="message-body">Review the proposal above. Confirming records your approval and returns an execution receipt.</div>';
-      const approve=document.createElement('button');approve.className='bronze-button';approve.textContent='Confirm this action';approve.onclick=()=>confirmAction(data.confirm_id,approve);entry.appendChild(approve);conversationContainer.appendChild(entry);
+      entry.innerHTML='<div class="message-label">Approval optional</div><div class="message-body">Nothing will happen unless you confirm. You can clarify or revise your request without approving it.</div>';
+      const controls=document.createElement('div');controls.className='dialog-controls';
+      const approve=document.createElement('button');approve.className='bronze-button';approve.textContent='Confirm this action';approve.onclick=()=>confirmAction(data.confirm_id,approve);
+      const clarify=document.createElement('button');clarify.className='bronze-button';clarify.textContent='Clarify or revise';clarify.onclick=()=>{stopActivity();entry.remove();const input=$('#command-input');input.placeholder='Clarify or revise your request…';input.focus();toast('No approval was given. Add the missing detail and send again.');};
+      const dismiss=document.createElement('button');dismiss.className='bronze-button';dismiss.textContent='Cancel request';dismiss.onclick=()=>{entry.remove();toast('Request cancelled. Nothing was approved.');};
+      controls.append(approve,clarify,dismiss);entry.appendChild(controls);conversationContainer.appendChild(entry);
     }
     backendStatus='JARVIS replied · answers and drafts. Each question is independent.';
     $('#connection-status').textContent=backendStatus;
