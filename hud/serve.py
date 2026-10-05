@@ -1,8 +1,8 @@
 """Local Draeven adapter for the canonical, draft-only JARVIS Front Door."""
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import urlsplit, unquote
-import json, secrets, socket, threading, urllib.request
+from urllib.parse import parse_qs, urlsplit, unquote
+import html, json, secrets, socket, threading, time, urllib.request
 import eleven_voice
 import service_connections
 from private_credentials import (openai_key_is_configured, save_openai_key,
@@ -19,6 +19,8 @@ CHAT_LOCK = threading.Lock()
 HOSTS = {'127.0.0.1:4783', 'localhost:4783'}
 ORIGINS = {'http://' + host for host in HOSTS}
 WRIGHT_TOOL_MARKER = ROOT / 'wright_elevenlabs_tools_verified.json'
+ETSY_OAUTH_FLOW = {}
+ETSY_OAUTH_LOCK = threading.Lock()
 
 def upstream(path, body=None, timeout=5):
     data = None if body is None else json.dumps(body).encode('utf-8')
@@ -70,7 +72,30 @@ class Handler(SimpleHTTPRequestHandler):
                 self.wfile.write(data)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 pass
+    def send_html(self, status, html):
+        data = html.encode('utf-8')
+        self.send_response(status)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
     def do_GET(self):
+        path = unquote(urlsplit(self.path).path)
+        if path == "/api/connections/etsy/callback":
+            query = parse_qs(urlsplit(self.path).query)
+            state = query.get('state', [''])[0]
+            error = query.get('error_description', query.get('error', ['']))[0]
+            with ETSY_OAUTH_LOCK:
+                flow = ETSY_OAUTH_FLOW.pop(state, None)
+            try:
+                if error:
+                    raise service_connections.ConnectionError(error)
+                if not flow or int(flow.get('created_at', '0')) < int(time.time()) - 600:
+                    raise service_connections.ConnectionError('This Etsy authorization request expired. Start it again from Draeven.')
+                service_connections.finish_etsy_oauth(query.get('code', [''])[0], flow)
+                return self.send_html(200, '<!doctype html><meta charset="utf-8"><title>Etsy connected</title><style>body{font:18px system-ui;background:#0d1112;color:#f2dfb4;padding:4rem;max-width:42rem;margin:auto}h1{color:#e1a85d}</style><h1>Etsy is connected to Draeven.</h1><p>You may close this tab and return to Draeven.</p>')
+            except service_connections.ConnectionError as exc:
+                return self.send_html(400, '<!doctype html><meta charset="utf-8"><title>Etsy connection failed</title><style>body{font:18px system-ui;background:#0d1112;color:#f2dfb4;padding:4rem;max-width:42rem;margin:auto}h1{color:#e1a85d}</style><h1>Etsy connection failed.</h1><p>'+html.escape(str(exc))+'</p><p>Return to Draeven and try again.</p>')
         if self.path == "/api/connections/openai":
             if not self.local_request():
                 self.send_json(403, {"error": "Local requests only."})
@@ -90,7 +115,6 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json(200, service_connections.status())
         if not self.local_request():
             return self.send_json(403, {'error':'Local access only.'})
-        path = unquote(urlsplit(self.path).path)
         if path == '/api/voice/voices':
             try:return self.send_json(200,eleven_voice.voices())
             except eleven_voice.VoiceError as error:return self.send_json(503,{'error':str(error)})
@@ -133,6 +157,17 @@ class Handler(SimpleHTTPRequestHandler):
     def do_HEAD(self):
         self.do_GET()
     def do_POST(self):
+        if self.path == "/api/connections/etsy/authorize":
+            if not self.local_request():
+                return self.send_json(403, {"error":"Local requests only."})
+            try:
+                url, flow = service_connections.begin_etsy_oauth()
+                with ETSY_OAUTH_LOCK:
+                    ETSY_OAUTH_FLOW.clear()
+                    ETSY_OAUTH_FLOW[flow['state']] = flow
+                return self.send_json(200, {"url":url})
+            except service_connections.ConnectionError as exc:
+                return self.send_json(400, {"error":str(exc)})
         if self.path == "/api/connections/openai":
             if not self.local_request():
                 self.send_json(403, {"error": "Local requests only."})

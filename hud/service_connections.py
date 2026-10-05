@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
+import secrets
 import ssl
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -11,7 +14,8 @@ import urllib.request
 import certifi
 
 from private_credentials import (
-    load_etsy_connection, load_shopify_connection, load_twilio_connection,
+    load_etsy_connection, load_etsy_oauth, load_shopify_connection,
+    load_twilio_connection, save_etsy_oauth,
 )
 
 # Python's bundled OpenSSL path can point at an expired machine-wide certificate
@@ -21,6 +25,9 @@ CLIENT = urllib.request.build_opener(
     urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=TLS_CONTEXT)
 )
 ELEVENLABS_TWILIO_URL = "https://api.us.elevenlabs.io/twilio/inbound_call"
+ETSY_REDIRECT_URI = "http://localhost:4783/api/connections/etsy/callback"
+ETSY_SCOPES = "listings_r listings_w shops_r shops_w transactions_r"
+ETSY_TOKEN_URL = "https://api.etsy.com/v3/public/oauth/token"
 
 
 class ConnectionError(RuntimeError):
@@ -129,9 +136,92 @@ def validate_etsy(values: dict[str, str] | None = None) -> dict:
         headers={"x-api-key": f"{key}:{secret}"},
     )
     data, _ = _json(req)
-    return {"configured": True, "verified": str(data.get("shop_id", "")) == shop_id,
-            "private_access": False,
-            "note": "OAuth is still required for private listings and shop changes."}
+    result = {"configured": True, "verified": str(data.get("shop_id", "")) == shop_id,
+              "private_access": False,
+              "note": "Authorize the Etsy shop to enable private listings and shop changes."}
+    oauth = load_etsy_oauth()
+    if oauth:
+        try:
+            token = etsy_access_token(values, oauth)
+            auth_req = urllib.request.Request(
+                f"https://openapi.etsy.com/v3/application/shops/{urllib.parse.quote(shop_id)}",
+                headers={"x-api-key": f"{key}:{secret}", "Authorization": f"Bearer {token}"},
+            )
+            auth_data, _ = _json(auth_req)
+            result["private_access"] = str(auth_data.get("shop_id", "")) == shop_id
+            result["note"] = "Private Etsy authorization is active." if result["private_access"] else result["note"]
+        except (ConnectionError, ValueError, OSError):
+            result["note"] = "Etsy authorization expired. Authorize the shop again."
+    return result
+
+
+def begin_etsy_oauth() -> tuple[str, dict[str, str]]:
+    values = load_etsy_connection()
+    key = values.get("keystring", "").strip()
+    if not key:
+        raise ConnectionError("Save and verify the Etsy Keystring and Shared Secret first.")
+    verifier = secrets.token_urlsafe(64)[:96]
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+    state = secrets.token_urlsafe(32)
+    query = urllib.parse.urlencode({
+        "response_type": "code", "redirect_uri": ETSY_REDIRECT_URI,
+        "scope": ETSY_SCOPES, "client_id": key, "state": state,
+        "code_challenge": challenge, "code_challenge_method": "S256",
+    })
+    flow = {"state": state, "verifier": verifier, "created_at": str(int(time.time()))}
+    return f"https://www.etsy.com/oauth/connect?{query}", flow
+
+
+def finish_etsy_oauth(code: str, flow: dict[str, str]) -> dict:
+    values = load_etsy_connection()
+    key = values.get("keystring", "").strip()
+    if not key or not code or not flow.get("verifier"):
+        raise ConnectionError("The Etsy authorization request is incomplete. Start it again from Draeven.")
+    body = urllib.parse.urlencode({
+        "grant_type": "authorization_code", "client_id": key,
+        "redirect_uri": ETSY_REDIRECT_URI, "code": code,
+        "code_verifier": flow["verifier"],
+    }).encode()
+    req = urllib.request.Request(ETSY_TOKEN_URL, data=body, method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"})
+    data, _ = _json(req)
+    _save_etsy_token(data)
+    result = validate_etsy(values)
+    if not result.get("private_access"):
+        raise ConnectionError("Etsy authorized the app, but the private shop check failed.")
+    return result
+
+
+def _save_etsy_token(data: dict) -> None:
+    access = str(data.get("access_token", "")).strip()
+    refresh = str(data.get("refresh_token", "")).strip()
+    scope = str(data.get("scope", "")).strip()
+    if not access or not refresh:
+        raise ConnectionError("Etsy did not return the required authorization tokens.")
+    expires_at = str(int(time.time()) + max(60, int(data.get("expires_in", 3600))) - 60)
+    save_etsy_oauth({"access_token": access, "refresh_token": refresh,
+                     "expires_at": expires_at, "scope": scope})
+
+
+def etsy_access_token(values: dict[str, str] | None = None,
+                      oauth: dict[str, str] | None = None) -> str:
+    values = values or load_etsy_connection()
+    oauth = oauth or load_etsy_oauth()
+    if not oauth.get("access_token"):
+        raise ConnectionError("Etsy private authorization is not configured.")
+    if int(oauth.get("expires_at", "0") or 0) > int(time.time()):
+        return oauth["access_token"]
+    body = urllib.parse.urlencode({
+        "grant_type": "refresh_token", "client_id": values.get("keystring", ""),
+        "refresh_token": oauth.get("refresh_token", ""),
+    }).encode()
+    req = urllib.request.Request(ETSY_TOKEN_URL, data=body, method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"})
+    data, _ = _json(req)
+    if not data.get("scope"):
+        data["scope"] = oauth.get("scope", "")
+    _save_etsy_token(data)
+    return str(data["access_token"])
 
 
 def status() -> dict:

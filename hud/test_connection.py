@@ -74,5 +74,18 @@ class AdapterTests(unittest.TestCase):
         with patch.object(hud,'wright_token_is_configured',return_value=True):
             status,raw=self.request('/api/connections/wright')
         self.assertEqual(json.loads(raw),{'configured':True})
+    def test_etsy_authorization_starts_with_provider_url(self):
+        with patch.object(hud.service_connections,'begin_etsy_oauth',return_value=(
+                'https://www.etsy.com/oauth/connect?state=safe',
+                {'state':'safe','verifier':'private','created_at':'9999999999'})):
+            status,raw=self.request('/api/connections/etsy/authorize',{})
+        self.assertEqual(status,200)
+        result=json.loads(raw)
+        self.assertEqual(result['url'],'https://www.etsy.com/oauth/connect?state=safe')
+        self.assertNotIn('verifier',result)
+    def test_etsy_callback_requires_matching_state(self):
+        status,raw=self.request('/api/connections/etsy/callback?code=unused&state=wrong')
+        self.assertEqual(status,400)
+        self.assertIn(b'authorization request expired',raw)
 
 if __name__=='__main__':unittest.main()

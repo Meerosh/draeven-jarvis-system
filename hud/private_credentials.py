@@ -12,6 +12,7 @@ WRIGHT_TARGET = "Draeven/Wright/Tool-Token"
 TWILIO_TARGET = "Draeven/Twilio/Connection"
 SHOPIFY_TARGET = "Draeven/Shopify/Connection"
 ETSY_TARGET = "Draeven/Etsy/Connection"
+ETSY_OAUTH_TARGET = "Draeven/Etsy/OAuth"
 
 class CREDENTIALW(ctypes.Structure):
     _fields_ = [("Flags", wintypes.DWORD), ("Type", wintypes.DWORD),
@@ -134,3 +135,11 @@ def save_etsy_connection(values: dict[str, str]) -> None:
 
 def load_etsy_connection() -> dict[str, str]:
     return _load_bundle(ETSY_TARGET)
+
+def save_etsy_oauth(values: dict[str, str]) -> None:
+    _save_bundle(ETSY_OAUTH_TARGET, values,
+        ("access_token", "refresh_token", "expires_at", "scope"),
+        "Draeven private Etsy OAuth tokens")
+
+def load_etsy_oauth() -> dict[str, str]:
+    return _load_bundle(ETSY_OAUTH_TARGET)
