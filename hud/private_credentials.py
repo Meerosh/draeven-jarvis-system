@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import json
 from ctypes import wintypes
+import sys
 
 CRED_TYPE_GENERIC = 1
 CRED_PERSIST_LOCAL_MACHINE = 2
@@ -14,25 +15,38 @@ SHOPIFY_TARGET = "Draeven/Shopify/Connection"
 ETSY_TARGET = "Draeven/Etsy/Connection"
 ETSY_OAUTH_TARGET = "Draeven/Etsy/OAuth"
 
-class CREDENTIALW(ctypes.Structure):
-    _fields_ = [("Flags", wintypes.DWORD), ("Type", wintypes.DWORD),
-        ("TargetName", wintypes.LPWSTR), ("Comment", wintypes.LPWSTR),
-        ("LastWritten", wintypes.FILETIME), ("CredentialBlobSize", wintypes.DWORD),
-        ("CredentialBlob", ctypes.POINTER(ctypes.c_ubyte)),
-        ("Persist", wintypes.DWORD), ("AttributeCount", wintypes.DWORD),
-        ("Attributes", ctypes.c_void_p), ("TargetAlias", wintypes.LPWSTR),
-        ("UserName", wintypes.LPWSTR)]
+# Try to load Windows credential manager API
+_win_available = False
+_api = None
+_write = None
+_read = None
+_free = None
 
-PCREDENTIALW = ctypes.POINTER(CREDENTIALW)
-_api = ctypes.WinDLL("Advapi32.dll", use_last_error=True)
-_write = _api.CredWriteW
-_write.argtypes = (ctypes.POINTER(CREDENTIALW), wintypes.DWORD)
-_write.restype = wintypes.BOOL
-_read = _api.CredReadW
-_read.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(PCREDENTIALW))
-_read.restype = wintypes.BOOL
-_free = _api.CredFree
-_free.argtypes = (ctypes.c_void_p,)
+if sys.platform == 'win32':
+    try:
+        class CREDENTIALW(ctypes.Structure):
+            _fields_ = [("Flags", wintypes.DWORD), ("Type", wintypes.DWORD),
+                ("TargetName", wintypes.LPWSTR), ("Comment", wintypes.LPWSTR),
+                ("LastWritten", wintypes.FILETIME), ("CredentialBlobSize", wintypes.DWORD),
+                ("CredentialBlob", ctypes.POINTER(ctypes.c_ubyte)),
+                ("Persist", wintypes.DWORD), ("AttributeCount", wintypes.DWORD),
+                ("Attributes", ctypes.c_void_p), ("TargetAlias", wintypes.LPWSTR),
+                ("UserName", wintypes.LPWSTR)]
+
+        PCREDENTIALW = ctypes.POINTER(CREDENTIALW)
+        _api = ctypes.WinDLL("Advapi32.dll", use_last_error=True)
+        _write = _api.CredWriteW
+        _write.argtypes = (ctypes.POINTER(CREDENTIALW), wintypes.DWORD)
+        _write.restype = wintypes.BOOL
+        _read = _api.CredReadW
+        _read.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(PCREDENTIALW))
+        _read.restype = wintypes.BOOL
+        _free = _api.CredFree
+        _free.argtypes = (ctypes.c_void_p,)
+        _win_available = True
+    except Exception as e:
+        # Windows Credential Manager not available; will use fallback
+        pass
 
 def _valid(value: str) -> str:
     key = value.strip()
@@ -43,6 +57,8 @@ def _valid(value: str) -> str:
     return key
 
 def _save(target: str, value: str, comment: str) -> None:
+    if not _win_available:
+        raise OSError("Windows credential storage is unavailable on this system.")
     blob = value.encode("utf-16-le")
     buffer = (ctypes.c_ubyte * len(blob)).from_buffer_copy(blob)
     credential = CREDENTIALW(Type=CRED_TYPE_GENERIC, TargetName=target,
@@ -53,6 +69,8 @@ def _save(target: str, value: str, comment: str) -> None:
         raise ctypes.WinError(ctypes.get_last_error())
 
 def _load(target: str) -> str | None:
+    if not _win_available:
+        return None
     credential = PCREDENTIALW()
     if not _read(target, CRED_TYPE_GENERIC, 0, ctypes.byref(credential)):
         error = ctypes.get_last_error()
@@ -88,6 +106,8 @@ def save_wright_token(value: str) -> None:
     _save(WRIGHT_TARGET, value, "Draeven private Wright tool token")
 
 def openai_key_is_configured() -> bool:
+    if not _win_available:
+        return False
     credential = PCREDENTIALW()
     if not _read(OPENAI_TARGET, CRED_TYPE_GENERIC, 0, ctypes.byref(credential)):
         error = ctypes.get_last_error()
@@ -102,6 +122,8 @@ def load_openai_key() -> str | None:
     return _load(OPENAI_TARGET)
 
 def wright_token_is_configured() -> bool:
+    if not _win_available:
+        return False
     credential = PCREDENTIALW()
     if not _read(WRIGHT_TARGET, CRED_TYPE_GENERIC, 0, ctypes.byref(credential)):
         error = ctypes.get_last_error()
