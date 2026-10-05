@@ -14,6 +14,8 @@ It replaces the earlier port-8000 FastAPI prototype. That prototype remains avai
 | Wright tools | `runtime/control-plane/` | `C:\Users\Arach\my-agent\jarvis-control-plane` | 8091 |
 | Ollama | external local service | installed separately | 11434 |
 
+`hud/draeven_core.py` is the operating layer above the model Front Door. It routes verified tools first, preserves a bounded local conversation, uses at most one model route when no tool matches, and owns approval-gated executable tools.
+
 The knowledge vault is deliberately separate from this code repository. Its live location is `C:\Users\Arach\Documents\Jarvis`.
 
 ## Provider routing
@@ -66,7 +68,8 @@ Listing and inspection are read-only. Clone, implementation and publication show
 
 ## Current limitations
 
-- Wright's inbound Twilio route still needs a provider-side verification receipt.
-- Shopify's external app installation is complete, but Draeven's current runtime credential check is not verified.
-- Etsy's external app identity was verified previously, but private runtime OAuth is not verified.
-- General Front Door providers remain advisory/read-only. Repository edits use the separate approval-gated worker above.
+- Shopify live catalog reads and approval-gated product status changes are registered Draeven Core tools.
+- Etsy private OAuth listing reads are registered Draeven Core tools.
+- Repository inspection and approval-gated implementation/publication use the managed repository worker.
+- General model providers remain advisory. Draeven Core never treats a model claim as tool execution.
+- Email and calendar remain unavailable until a provider OAuth connection is added.

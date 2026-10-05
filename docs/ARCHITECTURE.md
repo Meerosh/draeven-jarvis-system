@@ -36,3 +36,14 @@ Claude runs in plan mode and ordinary Codex answers run ephemerally with a read-
 4. Publication requires a second confirmation, scans for common credential material, then commits and pushes.
 
 Managed repositories live at `C:\Users\Arach\Documents\Jarvis\Citadel\repositories` and cannot escape that root through repository names.
+# Draeven Core
+
+The HUD server contains the tool-first operating layer in `hud/draeven_core.py`. Requests follow this order:
+
+1. Preserve the bounded local conversation.
+2. Match a registered deterministic tool.
+3. Execute read-only tools immediately and attach provider evidence.
+4. Prepare consequential writes and require explicit confirmation.
+5. Use one cost-controlled Front Door model route only when no tool applies.
+
+The model Front Door is advisory. It cannot claim a tool ran. Executable tools return receipts from Draeven Core or the managed repository worker.

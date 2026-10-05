@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlsplit, unquote
 import html, json, re, secrets, socket, threading, time, urllib.request
 import eleven_voice
 import service_connections
+from draeven_core import DraevenCore
 from private_credentials import (openai_key_is_configured, save_openai_key,
     save_wright_token, wright_token_is_configured, save_twilio_connection,
     save_shopify_connection, save_etsy_connection)
@@ -21,6 +22,7 @@ ORIGINS = {'http://' + host for host in HOSTS}
 WRIGHT_TOOL_MARKER = ROOT / 'wright_elevenlabs_tools_verified.json'
 ETSY_OAUTH_FLOW = {}
 ETSY_OAUTH_LOCK = threading.Lock()
+CORE = DraevenCore(Path.home() / '.config' / 'draeven' / 'conversation.json')
 
 def upstream(path, body=None, timeout=5):
     data = None if body is None else json.dumps(body).encode('utf-8')
@@ -113,6 +115,10 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.local_request():
                 return self.send_json(403, {"error":"Local requests only."})
             return self.send_json(200, service_connections.status())
+        if self.path == "/api/core/status":
+            if not self.local_request():
+                return self.send_json(403, {"error":"Local requests only."})
+            return self.send_json(200, CORE.status())
         if not self.local_request():
             return self.send_json(403, {'error':'Local access only.'})
         if path == '/api/voice/voices':
@@ -132,6 +138,7 @@ class Handler(SimpleHTTPRequestHandler):
                     'providers':health.get('providers', {}), 'usage':health.get('usage', {}),
                     'services':{
                         'frontdoor': {'ready': True},
+                        'core': {'ready': True, 'routing': 'tool-first'},
                         'laya': {'ready': laya.get('ok') is True and laya.get('model_loaded') is True},
                         'wright': {'ready': wright.get('ok') is True,
                             'webhook_verification': wright.get('webhook_verification') is True,
@@ -256,6 +263,10 @@ class Handler(SimpleHTTPRequestHandler):
                 confirm_id = data.get('confirm_id') if isinstance(data,dict) else None
                 if not isinstance(confirm_id,str) or not confirm_id:
                     return self.send_json(400,{'error':'Missing approval identifier.'})
+                core_reply = CORE.confirm(confirm_id)
+                if core_reply:
+                    return self.send_json(200, {'reply':core_reply.answer, 'provider':core_reply.route,
+                        'receipt':core_reply.receipt, 'mode':core_reply.mode})
                 result = upstream('/confirm', {'id':confirm_id}, timeout=720)
                 answer = result.get('answer')
                 if not isinstance(answer,str) or not answer.strip():
@@ -270,27 +281,16 @@ class Handler(SimpleHTTPRequestHandler):
         if not CHAT_LOCK.acquire(blocking=False):
             return self.send_json(409, {'error':'JARVIS is still answering. Please wait.'})
         try:
-            if (re.search(r'\bshopify\b', message, re.I)
-                    and re.search(r'\b(card|cards|catalog|products?|listings?|available|inventory|how many|count)\b', message, re.I)):
-                summary = service_connections.shopify_catalog_summary()
-                answer = (f"I checked Shopify live. You currently have {summary['active_greeting_cards']} active greeting-card listings. "
-                          f"Your store has {summary['active_products']} active products in total; the other active product is your Arcane Joining Packet. "
-                          f"{summary['digital_inventory_note']}")
-                return self.send_json(200, {'reply':answer, 'provider':'Shopify live read',
-                    'mode':'read-only', 'receipt':{'source':'Shopify Admin GraphQL','verified':True}})
-            # Forward only text; never accept browser routing or approval overrides.
+            # Draeven Core routes verified tools before using one model route.
             agent = data.get('agent') if isinstance(data,dict) else None
             if agent is not None and agent not in {'lucien','garrick','vaelis','azrath'}:
                 return self.send_json(400, {'error':'Unknown council agent.'})
-            result = upstream('/ask', {'text':message.strip(), 'agent':agent}, timeout=720)
-            answer = result.get('answer')
-            if not isinstance(answer, str) or not answer.strip():
-                raise ValueError('Missing answer')
-            if answer.startswith(('[Claude Code CLI not found', '[Claude took longer', '[no output]')):
-                return self.send_json(502, {'error':answer})
-            self.send_json(200, {'reply':answer, 'provider':result.get('route','JARVIS'),
-                'mode':'approval-gated', 'approval_required':bool(result.get('confirm_id')),
-                'confirm_id':result.get('confirm_id')})
+            reply = CORE.respond(message.strip(), agent, upstream)
+            payload = {'reply':reply.answer, 'provider':reply.route, 'mode':reply.mode}
+            if reply.receipt:payload['receipt']=reply.receipt
+            if reply.confirm_id:
+                payload['confirm_id']=reply.confirm_id;payload['approval_required']=True
+            return self.send_json(200,payload)
         except (TimeoutError, socket.timeout):
             self.send_json(504, {'error':'JARVIS timed out. It may still be finishing; check before retrying.'})
         except Exception:

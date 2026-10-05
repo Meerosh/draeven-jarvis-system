@@ -127,6 +127,18 @@ main{height:100vh;max-width:none;margin:0;padding:7px 10px 70px;overflow:hidden}
  .agent-art,.large .agent-art{background-size:400% 100%;background-position:var(--position) top}
  .agent-content{flex:0 0 54px;padding:6px 9px}.agent-content h3{font-size:14px}.agent-purpose{font-size:6px;letter-spacing:1px}.agent-status{font-size:7px;margin-top:3px}
 }
+
+/* Draeven core orb: the lava itself breathes; no decorative rings or offset waves. */
+.orbit,.presence-name,.orb-stage::before,.orb-stage::after{display:none!important;content:none!important}
+.orb-stage{display:grid;place-items:center}
+.orb{position:relative!important;left:auto!important;top:auto!important;transform-origin:center;animation:lava-rest 4.8s ease-in-out infinite}
+.state-listening .orb{animation:lava-listen 1.8s ease-in-out infinite!important}
+.state-thinking .orb{animation:lava-think 2.8s ease-in-out infinite!important}
+.state-speaking .orb{animation:lava-speak 1.05s ease-in-out infinite!important}
+@keyframes lava-rest{0%,100%{transform:scale(.98);filter:brightness(.78);box-shadow:0 0 22px #9e302f2f}50%{transform:scale(1.025);filter:brightness(.94);box-shadow:0 0 30px #bd392c50}}
+@keyframes lava-listen{0%,100%{transform:scale(.96);filter:brightness(.82);box-shadow:0 0 24px #a32e2640}50%{transform:scale(1.075);filter:brightness(1.24);box-shadow:0 0 44px #ef5a395f}}
+@keyframes lava-think{0%,100%{transform:scale(.97);filter:brightness(.8);box-shadow:0 0 22px #9e302f36}50%{transform:scale(1.05);filter:brightness(1.08);box-shadow:0 0 38px #d1493058}}
+@keyframes lava-speak{0%,100%{transform:scale(.95);filter:brightness(.8);box-shadow:0 0 22px #9e302f38}50%{transform:scale(1.09);filter:brightness(1.32);box-shadow:0 0 48px #ff633d70}}
 .orb-stage::before,.orb-stage::after{content:'';position:absolute;inset:-18px;border:2px solid #d2a567;border-radius:50%;opacity:0;pointer-events:none;z-index:4;box-shadow:0 0 18px #c96a3a55,inset 0 0 18px #c96a3a33}
 .state-listening .orb-stage::before{animation:mana-draw 1.45s ease-in infinite}.state-listening .orb-stage::after{animation:mana-draw 1.45s .72s ease-in infinite;border-style:dashed}
 .state-listening .orb{filter:brightness(1.08);box-shadow:0 0 32px #ef6a3c66}.state-listening .orbit{animation-direction:reverse;animation-duration:7s;border-color:#efb36e}

@@ -292,7 +292,7 @@ PERSONA = ("You are JARVIS, Semaj's operating partner, speaking through his JARV
 
 STATUS_WORDS = ("priorit", "status", "running", "what's next", "whats next", "what is next", "overview", "all my business", "all of my business")
 
-def handle(request, d=None, agent=None):
+def handle(request, d=None, agent=None, context=None):
     # CRITICAL OPTIMIZATION: Eliminate vault searching entirely (~15-27 sec waste).
     # Laya routes instantly (~1-2 sec). Claude Code gets the boot brief via the boot hook.
     # Vault search was premature; Laya + boot brief + Claude makes it redundant.
@@ -327,6 +327,10 @@ def handle(request, d=None, agent=None):
     else:
         notes = []  # No vault search for pre-computed paths either
     lane = d["lane"]
+    model_request = request
+    if isinstance(context, str) and context.strip():
+        model_request = ("Recent Draeven conversation:\n" + context.strip()[:8000]
+                         + "\n\nCurrent request:\n" + request)
     timing["routing_done"] = time.time()
     if lane == "chat":
         hour = datetime.datetime.now().hour
@@ -337,14 +341,14 @@ def handle(request, d=None, agent=None):
         answer, route = provider_answer(request, d, PERSONA + "Answer from JARVIS-BOOT-BRIEF.md, Active Priorities.md and MASTER_CONTEXT.md "
                              "in the vault root (read those, nothing else unless essential). Give: each business and its "
                              "current state, what is actually running, and the top priorities in order. Flag anything the "
-                             f"vault is missing.\n\nRequest: {request}", status_request=True)
+                             f"vault is missing.\n\nRequest: {model_request}", status_request=True)
         timing["claude_end"] = time.time()
         d["timing_ms"] = {k: int((v - timing["start"]) * 1000) for k, v in timing.items() if k != "start"}
         return d, answer, route + " (status files)", None
     if agent in COUNCIL:
         provider, model, role = COUNCIL[agent]
         answer, route = provider_answer(request, d,
-            PERSONA + role + " Give advice or a draft only. Do not perform external actions, publish, purchase, send, or delete.\n\nRequest: " + request,
+            PERSONA + role + " Give advice or a draft only. Do not perform external actions, publish, purchase, send, or delete.\n\nRequest: " + model_request,
             provider=provider, model=model)
         d["council_agent"] = agent
         return d, answer, route + f" (council:{agent}; advice only)", None
@@ -354,7 +358,7 @@ def handle(request, d=None, agent=None):
         timing["claude_start"] = time.time()
         draft, route = provider_answer(request, d, PERSONA + "This request has real-world stakes. DO NOT take any action, send anything, "
                            "or change any file. Produce only the draft or plan and list exactly what would happen "
-                           f"if Semaj confirms.\n\nRequest: {request}", provider="claude", model="haiku")
+                           f"if Semaj confirms.\n\nRequest: {model_request}", provider="claude", model="haiku")
         timing["claude_end"] = time.time()
         d["timing_ms"] = {k: int((v - timing["start"]) * 1000) for k, v in timing.items() if k != "start"}
         return d, draft, route + " (draft only - waiting for your Confirm)", pid
@@ -374,11 +378,11 @@ def handle(request, d=None, agent=None):
     if lane == "image":
         answer, route = provider_answer(request, d, PERSONA + "Create a concise image-production prompt package. Use Semaj's existing O&L card pipeline "
                              "(C:\\Users\\Arach\\my-agent\\jarvis-control-plane, card_orchestrator.py) if it applies; "
-                             f"otherwise write the image prompt and next step. Do not edit files, generate images, or execute actions. "
-                             f"Midjourney submission is manual.\n\nRequest: {request}", provider="claude", model="haiku")
+                              f"otherwise write the image prompt and next step. Do not edit files, generate images, or execute actions. "
+                              f"Midjourney submission is manual.\n\nRequest: {model_request}", provider="claude", model="haiku")
         return d, answer, route + " (manual image prompt package)", None
     timing["claude_start"] = time.time()
-    answer, route = provider_answer(request, d, PERSONA + "Draft the requested work and explain the next step. Do not edit files, run commands, or perform external actions.\n\n" + request)
+    answer, route = provider_answer(request, d, PERSONA + "Draft the requested work and explain the next step. Do not edit files, run commands, or perform external actions.\n\n" + model_request)
     timing["claude_end"] = time.time()
     d["timing_ms"] = {k: int((v - timing["start"]) * 1000) for k, v in timing.items() if k != "start"}
     return d, answer, route + " (draft only)", None
@@ -428,7 +432,7 @@ class H(BaseHTTPRequestHandler):
                 agent = req.get("agent")
                 if agent is not None and agent not in COUNCIL:
                     return self._json(400, {"error": "unknown council agent"})
-                d, ans, route, pid = handle(text, req.get("reflex"), agent)
+                d, ans, route, pid = handle(text, req.get("reflex"), agent, req.get("context"))
                 req_total = int((time.time() - req_start) * 1000)
                 log(text, d, route, ans)
                 HISTORY.append({"q": text, "a": ans, "route": route, "confirm_id": pid})

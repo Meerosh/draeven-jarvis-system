@@ -163,6 +163,68 @@ def shopify_catalog_summary() -> dict:
     }
 
 
+def shopify_products(search: str = "") -> dict:
+    """Return a compact live product list for Draeven's read-only catalog tools."""
+    values = load_shopify_connection()
+    store = values.get("store", "").strip().removeprefix("https://").rstrip("/")
+    client_id = values.get("client_id", "").strip()
+    secret = values.get("client_secret", "").strip()
+    if not (store and client_id and secret):
+        raise ConnectionError("Shopify is not configured.")
+    token_req = urllib.request.Request(
+        f"https://{store}/admin/oauth/access_token",
+        data=urllib.parse.urlencode({"grant_type":"client_credentials", "client_id":client_id,
+                                    "client_secret":secret}).encode(), method="POST",
+        headers={"Content-Type":"application/x-www-form-urlencoded"})
+    token_data, _ = _json(token_req)
+    token = token_data.get("access_token")
+    if not token:
+        raise ConnectionError("Shopify did not return an access token.")
+    query = json.dumps({"query":"{ products(first:250) { nodes { id title handle status productType tags totalInventory updatedAt } } }"}).encode()
+    req = urllib.request.Request(f"https://{store}/admin/api/2026-07/graphql.json", data=query, method="POST",
+        headers={"Content-Type":"application/json", "X-Shopify-Access-Token":token})
+    data, _ = _json(req)
+    if data.get("errors"):
+        raise ConnectionError("Shopify rejected the product read.")
+    items = data.get("data", {}).get("products", {}).get("nodes", [])
+    term = search.strip().lower()
+    if term:
+        items = [item for item in items if term in (item.get("title", "") + " " + item.get("productType", "") + " " + " ".join(item.get("tags", []))).lower()]
+    return {"verified":True, "count":len(items), "products":items[:50], "truncated":len(items)>50}
+
+
+def shopify_set_product_status(product_id: str, status: str) -> dict:
+    """Change one Shopify product status after Draeven Core approval."""
+    status = status.upper().strip()
+    if status not in {"ACTIVE", "DRAFT", "ARCHIVED"}:
+        raise ConnectionError("Shopify status must be active, draft, or archived.")
+    if not str(product_id).startswith("gid://shopify/Product/"):
+        raise ConnectionError("Shopify product identifier is invalid.")
+    values = load_shopify_connection()
+    store = values.get("store", "").strip().removeprefix("https://").rstrip("/")
+    client_id = values.get("client_id", "").strip()
+    secret = values.get("client_secret", "").strip()
+    token_req = urllib.request.Request(f"https://{store}/admin/oauth/access_token",
+        data=urllib.parse.urlencode({"grant_type":"client_credentials", "client_id":client_id,
+                                    "client_secret":secret}).encode(), method="POST",
+        headers={"Content-Type":"application/x-www-form-urlencoded"})
+    token_data, _ = _json(token_req)
+    token = token_data.get("access_token")
+    mutation = "mutation($product:ProductUpdateInput!){productUpdate(product:$product){product{id title handle status updatedAt} userErrors{field message}}}"
+    body = json.dumps({"query":mutation, "variables":{"product":{"id":product_id, "status":status}}}).encode()
+    req = urllib.request.Request(f"https://{store}/admin/api/2026-07/graphql.json", data=body, method="POST",
+        headers={"Content-Type":"application/json", "X-Shopify-Access-Token":token})
+    data, _ = _json(req)
+    payload = data.get("data", {}).get("productUpdate", {})
+    errors = payload.get("userErrors", []) or data.get("errors", [])
+    if errors:
+        raise ConnectionError("Shopify rejected the product status change: " + "; ".join(str(e.get("message", e)) for e in errors))
+    product = payload.get("product")
+    if not product or product.get("status") != status:
+        raise ConnectionError("Shopify did not verify the requested product status.")
+    return {"verified":True, "product":product}
+
+
 def validate_etsy(values: dict[str, str] | None = None) -> dict:
     values = values or load_etsy_connection()
     key = values.get("keystring", "").strip()
@@ -261,6 +323,30 @@ def etsy_access_token(values: dict[str, str] | None = None,
         data["scope"] = oauth.get("scope", "")
     _save_etsy_token(data)
     return str(data["access_token"])
+
+
+def etsy_listing_summary() -> dict:
+    """Read private Etsy listing counts with the saved OAuth connection."""
+    values = load_etsy_connection()
+    key = values.get("keystring", "").strip()
+    secret = values.get("shared_secret", "").strip()
+    shop_id = values.get("shop_id", "").strip()
+    if not (key and secret and shop_id):
+        raise ConnectionError("Etsy is not configured.")
+    token = etsy_access_token(values)
+    headers = {"x-api-key":f"{key}:{secret}", "Authorization":f"Bearer {token}"}
+    counts = {}
+    samples = {}
+    for state in ("active", "draft", "inactive", "sold_out", "expired"):
+        query = urllib.parse.urlencode({"state":state, "limit":100})
+        req = urllib.request.Request(
+            f"https://openapi.etsy.com/v3/application/shops/{urllib.parse.quote(shop_id)}/listings?{query}",
+            headers=headers)
+        data, _ = _json(req)
+        results = data.get("results", []) if isinstance(data, dict) else []
+        counts[state] = int(data.get("count", len(results))) if isinstance(data, dict) else 0
+        samples[state] = [item.get("title", "") for item in results[:10]]
+    return {"verified":True, "counts":counts, "sample_titles":samples}
 
 
 def status() -> dict:

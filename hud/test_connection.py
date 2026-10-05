@@ -1,5 +1,5 @@
 """Local adapter checks; provider calls are replaced with controlled responses."""
-import importlib.util, json, threading, unittest, urllib.request, urllib.error
+import importlib.util, json, tempfile, threading, unittest, urllib.request, urllib.error
 from pathlib import Path
 from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('hud_server',Path(__file__).with_name('serve.py'))
@@ -8,13 +8,15 @@ hud=importlib.util.module_from_spec(spec);spec.loader.exec_module(hud)
 class AdapterTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.tempdir=tempfile.TemporaryDirectory()
+        hud.CORE=hud.DraevenCore(Path(cls.tempdir.name)/'conversation.json')
         cls.server=hud.Server(('127.0.0.1',0),hud.Handler)
         cls.base='http://127.0.0.1:'+str(cls.server.server_port)
         hud.HOSTS.add(cls.base.split('//')[1])
         threading.Thread(target=cls.server.serve_forever,daemon=True).start()
     @classmethod
     def tearDownClass(cls):
-        cls.server.shutdown();cls.server.server_close()
+        cls.server.shutdown();cls.server.server_close();cls.tempdir.cleanup()
     def request(self,path,body=None,headers=None,method=None):
         data=None if body is None else json.dumps(body).encode()
         req=urllib.request.Request(self.base+path,data,{'Content-Type':'application/json',**(headers or {})},method=method)
@@ -25,14 +27,20 @@ class AdapterTests(unittest.TestCase):
         with response:
             return response.status,response.read()
     def test_maps_answer_and_strips_client_overrides(self):
-        with patch.object(hud,'upstream',return_value={'answer':'Vault answer','route':'claude (status files)','confirm_id':'pending'}) as upstream:
+        with patch.object(hud,'upstream',return_value={'answer':'Vault answer','route':'claude (status files)','confirm_id':None}) as upstream:
             status,raw=self.request('/api/chat',{'message':'My priority?','reflex':{'stakes':0},'confirm':True})
             self.assertEqual(status,200)
             result=json.loads(raw)
             self.assertEqual(result['reply'],'Vault answer')
-            self.assertTrue(result['approval_required'])
-            self.assertEqual(result['mode'],'approval-gated')
-            upstream.assert_called_once_with('/ask',{'text':'My priority?','agent':None},timeout=720)
+            self.assertNotIn('approval_required',result)
+            self.assertEqual(result['mode'],'advice')
+            upstream.assert_called_once()
+            path,body=upstream.call_args.args
+            self.assertEqual(path,'/ask')
+            self.assertEqual(body['text'],'My priority?')
+            self.assertIn('My priority?',body['context'])
+            self.assertIsNone(body['agent'])
+            self.assertEqual(upstream.call_args.kwargs['timeout'],720)
     def test_shopify_catalog_question_uses_live_connector_instead_of_draft_model(self):
         summary={'verified':True,'active_products':18,'active_greeting_cards':17,
                  'card_titles':['Example'],
@@ -46,6 +54,31 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(result['provider'],'Shopify live read')
         self.assertTrue(result['receipt']['verified'])
         upstream.assert_not_called()
+    def test_shopify_active_count_is_a_read_not_a_status_change(self):
+        summary={'verified':True,'active_products':18,'active_greeting_cards':17,
+                 'card_titles':[],'digital_inventory_note':'Digital inventory note.'}
+        with patch.object(hud.service_connections,'shopify_catalog_summary',return_value=summary), \
+             patch.object(hud.service_connections,'shopify_products') as products:
+            status,raw=self.request('/api/chat',{'message':'How many cards are active in Shopify?'})
+        result=json.loads(raw)
+        self.assertEqual(status,200)
+        self.assertEqual(result['provider'],'Shopify live read')
+        products.assert_not_called()
+    def test_shopify_write_requires_confirmation_and_returns_execution_receipt(self):
+        product={'id':'gid://shopify/Product/1','title':'Gay Birthday Card','handle':'gay-birthday-card','status':'ACTIVE'}
+        with patch.object(hud.service_connections,'shopify_products',return_value={'verified':True,'products':[product]}):
+            status,raw=self.request('/api/chat',{'message':'Set Gay Birthday Card to draft in Shopify'})
+        proposal=json.loads(raw)
+        self.assertEqual(status,200)
+        self.assertTrue(proposal['approval_required'])
+        self.assertIn('Nothing has changed yet',proposal['reply'])
+        completed={**product,'status':'DRAFT','updatedAt':'now'}
+        with patch.object(hud.service_connections,'shopify_set_product_status',return_value={'verified':True,'product':completed}):
+            status,raw=self.request('/api/confirm',{'confirm_id':proposal['confirm_id']})
+        result=json.loads(raw)
+        self.assertEqual(status,200)
+        self.assertTrue(result['receipt']['executed'])
+        self.assertIn('now draft',result['reply'])
     def test_offline_is_failure(self):
         with patch.object(hud,'upstream',side_effect=ConnectionRefusedError):
             self.assertEqual(self.request('/api/chat',{'message':'hello'})[0],502)
