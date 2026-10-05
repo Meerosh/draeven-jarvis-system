@@ -115,6 +115,16 @@ class DraevenCore:
                           f"{counts['active']} active, {counts['draft']} draft, {counts['inactive']} inactive, "
                           f"{counts['sold_out']} sold-out, and {counts['expired']} expired listings.")
                 reply = CoreReply(answer, "Etsy private live read", receipt={"source":"Etsy API v3", "verified":True})
+            elif re.search(r"\bwright\b", text, re.I) and re.search(r"\b(status|working|ready|connected|runtime|phone)\b", text, re.I):
+                state = service_connections.wright_runtime_status()
+                answer = ("I checked Wright live. " + ("The local tool runtime and Twilio account are responding. " if state["verified"] else "The complete Wright path is not currently verified. ")
+                          + ("Webhook verification is enabled." if state["webhook_verification"] else "Webhook verification is not reporting ready."))
+                reply = CoreReply(answer, "Wright live status", receipt={"source":"Wright 8091 and Twilio", "verified":state["verified"]})
+            elif re.search(r"\b(what can you do|capabilities|are you operational|core status)\b", text, re.I):
+                ready = [item["name"] for item in self.status()["tools"] if item["ready"]]
+                answer = ("Draeven Core is online. Registered capabilities are: " + ", ".join(ready)
+                          + ". Email remains unavailable until OAuth is connected.")
+                reply = CoreReply(answer, "Draeven capability registry")
             elif re.search(r"\b(email|gmail|inbox)\b", text, re.I) and re.search(r"\b(connect|check|read|messages?|setup|set up)\b", text, re.I):
                 answer = ("Email is not connected to Draeven yet. I can use Shopify, Etsy, the vault, repositories, and Wright, "
                           "but email requires a separate OAuth connection before I can read or draft against a real inbox.")

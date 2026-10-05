@@ -78,6 +78,21 @@ def validate_twilio(values: dict[str, str] | None = None) -> dict:
     }
 
 
+def wright_runtime_status() -> dict:
+    """Read the local Wright tool service and Twilio route without changing either."""
+    try:
+        req = urllib.request.Request("http://127.0.0.1:8091/health")
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=3) as response:
+            runtime = json.load(response)
+    except Exception:
+        runtime = {}
+    twilio = validate_twilio()
+    return {"verified":bool(runtime.get("ok") and twilio.get("verified")),
+            "runtime_ready":runtime.get("ok") is True,
+            "webhook_verification":runtime.get("webhook_verification") is True,
+            "twilio":twilio}
+
+
 def repair_twilio_route(values: dict[str, str]) -> dict:
     record, sid, auth = _twilio_number(values)
     if not record:

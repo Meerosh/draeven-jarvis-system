@@ -79,6 +79,14 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(status,200)
         self.assertTrue(result['receipt']['executed'])
         self.assertIn('now draft',result['reply'])
+    def test_wright_status_uses_verified_runtime_tool(self):
+        state={'verified':True,'runtime_ready':True,'webhook_verification':True,'twilio':{'verified':True}}
+        with patch.object(hud.service_connections,'wright_runtime_status',return_value=state):
+            status,raw=self.request('/api/chat',{'message':'Is Wright connected and ready?'})
+        result=json.loads(raw)
+        self.assertEqual(status,200)
+        self.assertEqual(result['provider'],'Wright live status')
+        self.assertTrue(result['receipt']['verified'])
     def test_offline_is_failure(self):
         with patch.object(hud,'upstream',side_effect=ConnectionRefusedError):
             self.assertEqual(self.request('/api/chat',{'message':'hello'})[0],502)
