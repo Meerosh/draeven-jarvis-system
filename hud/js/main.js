@@ -131,6 +131,7 @@ let backendStatus = 'Checking JARVIS…';
 const conversationContainer = $('#conversation-display');
 const conversationPanel = $('.conversation-section');
 const conversationToggle = $('#conversation-toggle');
+function openConversation(){conversationPanel.classList.add('open');conversationPanel.setAttribute('aria-hidden','false');conversationToggle.textContent='Hide conversation';}
 conversationToggle.onclick=()=>{const open=conversationPanel.classList.toggle('open');conversationPanel.setAttribute('aria-hidden',String(!open));conversationToggle.textContent=open?'Hide conversation':'Conversation';};
 $('#conversation-close').onclick=()=>{conversationPanel.classList.remove('open');conversationPanel.setAttribute('aria-hidden','true');conversationToggle.textContent='Conversation';};
 function displayMessage(role, text, provider = null) {
@@ -147,7 +148,7 @@ function displayMessage(role, text, provider = null) {
   conversationContainer.appendChild(entry);
   conversationContainer.hidden = false;
   conversationContainer.scrollTop = conversationContainer.scrollHeight;
-  if(!conversationPanel.classList.contains('open'))conversationToggle.textContent='Conversation •';
+  openConversation();
 }
 function restorePresence() {
   if(voiceListening){setState('listening','LISTENING','Speak your question, then pause.');return;}
@@ -323,7 +324,7 @@ $('#mic-button').onclick=()=>{
  if(isJarvisRequestPending){toast('JARVIS is still answering. Please wait.');return;}
  if(!voiceListening && $('#command-input').value.trim()){toast('Send or clear your typed question before using Talk.');return;}
  if(voiceListening){voiceController.listen();return;}
- stopActivity();voiceController.listen();
+ openConversation();stopActivity();voiceController.listen();
 };
 let pushToTalkHeld=false;
 const typingTarget=target=>target?.matches?.('input, textarea, select, button, [contenteditable="true"]');
@@ -332,7 +333,7 @@ document.addEventListener('keydown',event=>{
  event.preventDefault();
  if(pushToTalkHeld||isJarvisRequestPending||voiceSpeaking)return;
  if($('#command-input').value.trim()){toast('Send or clear your typed question before using push to talk.');return;}
- pushToTalkHeld=true;stopActivity();voiceController.listen();
+ pushToTalkHeld=true;openConversation();stopActivity();voiceController.listen();
 });
 document.addEventListener('keyup',event=>{
  if(event.code!=='Space'||!pushToTalkHeld)return;
@@ -341,7 +342,7 @@ document.addEventListener('keyup',event=>{
 window.addEventListener('blur',()=>{if(pushToTalkHeld){pushToTalkHeld=false;voiceController.stop();}});
 $('#stop-voice').onclick=()=>{stopActivity();$('#voice-status').textContent=isJarvisRequestPending?'Voice stopped. JARVIS is still preparing the text answer.':'Voice stopped. Click Talk when ready.';};
 $('#read-reply').onclick=()=>{if(lastReply){stopActivity();voiceController.speak(lastReply,$('#reply-voice').value);}};
-try{$('#speak-replies').checked=localStorage.getItem('draeven-speak-replies')==='true';}catch{}
+try{const saved=localStorage.getItem('draeven-speak-replies');$('#speak-replies').checked=saved===null?true:saved==='true';}catch{$('#speak-replies').checked=true;}
 $('#speak-replies').onchange=()=>{
  const enabled=$('#speak-replies').checked;
  try{localStorage.setItem('draeven-speak-replies',String(enabled));}catch{}

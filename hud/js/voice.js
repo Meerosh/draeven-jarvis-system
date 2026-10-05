@@ -2,6 +2,7 @@
 function createDraevenVoice(env, hooks) {
   const Recognition = env.SpeechRecognition || env.webkitSpeechRecognition;
   let recognition = null, generation = 0, speechGeneration = 0, utterance = null;
+  let finishRequested = false;
   let listenTimer = null, speechTimer = null;
   let audio=null,audioURL=null,audioRequest=null,lastAudio=null;
   const status = text => hooks.status(text);
@@ -18,6 +19,7 @@ function createDraevenVoice(env, hooks) {
   function finishListening() {
     clearTimeout(listenTimer);
     if (!recognition) return;
+    finishRequested = true;
     status('Finishing your question…');
     try { recognition.stop(); }
     catch { stopListening(); status('The microphone could not finish cleanly. Please try again.'); }
@@ -39,7 +41,8 @@ function createDraevenVoice(env, hooks) {
     stop();
     if(!Recognition) {status('Speech recognition is unavailable here. Open Draeven in Chrome or Edge, or type your question.');return;}
     const token=++generation;
-    let text='', failed=false, sent=false;
+    finishRequested=false;
+    let text='',heardText='',failed=false,sent=false;
     const current=new Recognition(); recognition=current;
     current.lang='en-US'; current.continuous=false; current.interimResults=true; current.maxAlternatives=1;
     hooks.listening(true);
@@ -52,8 +55,9 @@ function createDraevenVoice(env, hooks) {
         if(event.results[i].isFinal)finalText+=event.results[i][0].transcript+' ';
         else interim+=event.results[i][0].transcript+' ';
       }
-      text=finalText.trim();
-      status((text||interim.trim())?'Heard: '+(text||interim.trim()):'Listening…');
+      if(finalText.trim())text=finalText.trim();
+      heardText=(finalText||interim).trim()||heardText;
+      status(heardText?'Heard: '+heardText:'Listening…');
     };
     current.onerror=event=>{
       if(token!==generation)return;
@@ -71,7 +75,9 @@ function createDraevenVoice(env, hooks) {
     current.onend=()=>{
       if(token!==generation)return;
       recognition=null;clearTimeout(listenTimer);hooks.listening(false);
-      if(!failed && text && !sent){sent=true;generation++;status('Question captured. Sending to JARVIS…');hooks.transcript(text);}
+      const captured=text||(finishRequested?heardText:'');
+      finishRequested=false;
+      if(!failed && captured && !sent){sent=true;generation++;status('Question captured. Sending to JARVIS…');hooks.transcript(captured);}
       else if(!failed)status('No complete speech was captured. Click Talk to try again.');
     };
     listenTimer=setTimeout(()=>{if(token===generation){stopListening();status('Listening timed out. Nothing was sent. Click Talk to try again.');}},30000);
