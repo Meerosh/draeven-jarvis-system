@@ -9,8 +9,16 @@ import re
 import threading
 import time
 import uuid
+import sys
 
 import service_connections
+
+# Import agent orchestration
+sys.path.insert(0, str(Path(__file__).parent.parent / "integrations"))
+try:
+    from agents_agency_bridge import DraevenAgentOrchestrator
+except ImportError:
+    DraevenAgentOrchestrator = None
 
 
 @dataclass
@@ -29,7 +37,22 @@ class DraevenCore:
         self.lock = threading.RLock()
         self.history = deque(maxlen=40)
         self.pending = {}
+        self.orchestrator = None
+        self.agent_config = None
         self._load()
+        self._load_orchestrator()
+
+    def _load_orchestrator(self):
+        """Initialize agent orchestration system if available."""
+        if DraevenAgentOrchestrator is None:
+            return
+        try:
+            self.orchestrator = DraevenAgentOrchestrator()
+            config_path = Path(__file__).parent.parent / "integrations" / "agent_config.json"
+            if config_path.exists():
+                self.agent_config = json.loads(config_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"Warning: Could not load agent orchestrator: {e}")
 
     def _load(self):
         try:
@@ -55,10 +78,88 @@ class DraevenCore:
             recent = list(self.history)[-8:]
         return "\n".join(f"{item.get('role','user')}: {item.get('text','')[:1200]}" for item in recent)
 
+    def _analyze_task_type(self, text: str) -> tuple[str, str, str]:
+        """
+        Analyze user request to extract task type, domain, and complexity.
+        Returns: (task_type, domain, complexity)
+        """
+        text_lower = text.lower()
+
+        # Detect domains
+        domain_keywords = {
+            "engineering": ["build", "develop", "code", "fix", "debug", "deploy", "system", "architecture", "refactor"],
+            "strategy": ["plan", "strategy", "roadmap", "vision", "approach", "decide", "analyze", "research", "investigate"],
+            "design": ["design", "visual", "creative", "aesthetic", "layout", "ui", "ux", "brand", "look", "feel"],
+            "security": ["security", "audit", "vulnerability", "exploit", "protect", "secure", "threat", "attack", "defense"],
+            "project-management": ["manage", "track", "schedule", "deadline", "timeline", "milestone", "organize", "coordinate"],
+            "marketing": ["market", "promote", "campaign", "audience", "engagement", "growth", "brand"],
+            "finance": ["budget", "cost", "expense", "revenue", "financial", "pricing", "profit"],
+        }
+
+        detected_domain = "engineering"  # default
+        for domain, keywords in domain_keywords.items():
+            if any(kw in text_lower for kw in keywords):
+                detected_domain = domain
+                break
+
+        # Detect task type
+        task_type = "general"
+        if any(word in text_lower for word in ["research", "investigate", "learn", "background", "understand", "explore"]):
+            task_type = "research"
+        elif any(word in text_lower for word in ["plan", "design", "architecture", "strategy"]):
+            task_type = "planning"
+        elif any(word in text_lower for word in ["implement", "build", "create", "execute", "write", "code"]):
+            task_type = "execution"
+        elif any(word in text_lower for word in ["review", "triage", "sort", "organize", "prioritize"]):
+            task_type = "triage"
+
+        # Detect complexity
+        complexity = "medium"
+        if any(word in text_lower for word in ["simple", "quick", "fast", "easy", "trivial"]):
+            complexity = "low"
+        elif any(word in text_lower for word in ["complex", "difficult", "intricate", "involved", "elaborate", "comprehensive"]):
+            complexity = "high"
+
+        return task_type, detected_domain, complexity
+
+    def _select_agent(self, task_type: str, domain: str, complexity: str) -> dict | None:
+        """
+        Select appropriate agent persona for the task using orchestrator.
+        Returns agent metadata or None if no match found.
+        """
+        if not self.orchestrator:
+            return None
+
+        agent = self.orchestrator.select_agent_for_task(task_type, domain, complexity)
+        if agent:
+            return {
+                "name": agent.name,
+                "provider": agent.provider,
+                "domain": agent.agent_domain,
+                "cost_tier": agent.cost_tier,
+                "prompt_override": agent.prompt_override,
+            }
+        return None
+
+    def _get_workflow_skills(self, task_type: str) -> list[str]:
+        """Get OMH skills for the workflow based on task type."""
+        if not self.orchestrator:
+            return []
+        return self.orchestrator.get_workflow_skills(task_type)
+
     def status(self) -> dict:
+        agent_status = {
+            "orchestration": "ready" if self.orchestrator else "unavailable",
+            "personas_available": len(self.agent_config.get("personas", {})) if self.agent_config else 0,
+            "domains_available": len(self.agent_config.get("available_domains", [])) if self.agent_config else 0,
+            "omh_skills_available": len(self.agent_config.get("skill_mappings", {})) if self.agent_config else 0,
+            "total_agents_loaded": self.agent_config.get("agent_count", 0) if self.agent_config else 0,
+        }
+
         return {
             "name":"Draeven Core", "ready":True, "conversation_turns":len(self.history),
-            "routing":"tool-first", "cost_policy":"local and deterministic tools before one cloud model call",
+            "routing":"tool-first with agent orchestration", "cost_policy":"local and deterministic tools before one cloud model call",
+            "agent_orchestration": agent_status,
             "tools":[
                 {"name":"shopify.catalog", "mode":"read", "ready":True},
                 {"name":"shopify.products", "mode":"read", "ready":True},
@@ -67,6 +168,8 @@ class DraevenCore:
                 {"name":"vault.status", "mode":"read", "ready":True},
                 {"name":"repositories", "mode":"read and approval-gated write", "ready":True},
                 {"name":"wright", "mode":"verified service", "ready":True},
+                {"name":"agent-orchestration", "mode":"agent selection for tasks", "ready":agent_status["orchestration"] == "ready"},
+                {"name":"omh-skills", "mode":"workflow orchestration", "ready":agent_status["orchestration"] == "ready"},
                 {"name":"email", "mode":"unavailable until OAuth is connected", "ready":False},
             ],
         }
@@ -130,12 +233,30 @@ class DraevenCore:
                           "but email requires a separate OAuth connection before I can read or draft against a real inbox.")
                 reply = CoreReply(answer, "Draeven capability registry")
             else:
+                # Analyze task and select agent
+                task_type, domain, complexity = self._analyze_task_type(text)
+                selected_agent = self._select_agent(task_type, domain, complexity)
+                workflow_skills = self._get_workflow_skills(task_type)
+
                 context = self.context()
-                data = upstream('/ask', {'text':text, 'agent':agent, 'context':context}, timeout=720)
+                # Pass agent selection to upstream
+                request_data = {
+                    'text': text,
+                    'agent': agent,
+                    'context': context,
+                    'selected_agent': selected_agent,
+                    'task_type': task_type,
+                    'domain': domain,
+                    'complexity': complexity,
+                    'workflow_skills': workflow_skills,
+                }
+                data = upstream('/ask', request_data, timeout=720)
                 answer = data.get('answer')
                 if not isinstance(answer, str) or not answer.strip():
                     raise ValueError("The response model returned an empty answer.")
                 route = data.get('route', 'Draeven model route')
+                if selected_agent:
+                    route = f"{route} via {selected_agent['name']} ({selected_agent['provider']})"
                 executable = bool(data.get('confirm_id') and 'repository worker' in route)
                 if data.get('confirm_id') and not executable:
                     answer = answer.strip() + "\n\nThis is a proposal only. Draeven Core has no registered executor for this action, so no approval button was created."
