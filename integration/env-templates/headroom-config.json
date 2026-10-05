@@ -1,0 +1,34 @@
+{
+  "jarvis": {
+    "healthEndpoint": "http://127.0.0.1:4783/api/health",
+    "pollInterval": 5000,
+    "timeout": 10000
+  },
+  "omniroute": {
+    "endpoint": "http://127.0.0.1:20128",
+    "dashboardUrl": "http://127.0.0.1:20128/dashboard/free-tiers"
+  },
+  "display": {
+    "theme": "dark",
+    "updateFrequency": 2000,
+    "showNotifications": true,
+    "notificationThreshold": 0.85
+  },
+  "storage": {
+    "dbPath": "~/.headroom/data.db",
+    "logPath": "~/.headroom/logs"
+  },
+  "metrics": {
+    "trackProviders": true,
+    "trackTokenUsage": true,
+    "trackCompressionRatio": true,
+    "retentionDays": 90
+  },
+  "alerts": {
+    "enableAlerts": true,
+    "quotaWarningThreshold": 75,
+    "quotaCriticalThreshold": 90,
+    "providerFailureAlert": true,
+    "compressionDegradeAlert": true
+  }
+}
