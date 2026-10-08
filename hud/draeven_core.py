@@ -72,19 +72,35 @@ class DraevenCore:
         }
 
     @staticmethod
-    def _shopify_request(text: str) -> bool:
-        return bool(re.search(r"\bshopify\b", text, re.I) and
-                    re.search(r"\b(card|cards|catalog|products?|listings?|available|inventory|how many|count|store)\b", text, re.I))
+    def _creative_request(text: str) -> bool:
+        return bool(re.search(
+            r"\b(?:create|produce|design|write|draft|brainstorm|compose|generate|make)\b"
+            r"[^.!?\n]{0,160}\b(?:cards?|copy|descriptions?|artwork|illustrations?|concepts?|listings?|stories|story)\b",
+            text, re.I))
 
-    @staticmethod
-    def _etsy_request(text: str) -> bool:
-        return bool(re.search(r"\betsy\b", text, re.I) and
-                    re.search(r"\b(listings?|drafts?|active|inactive|sold|expired|shop|how many|count)\b", text, re.I))
+    @classmethod
+    def _catalog_request(cls, text: str, platform: str) -> bool:
+        if cls._creative_request(text) or not re.search(r"\b" + platform + r"\b", text, re.I):
+            return False
+        return bool(re.search(
+            r"\b(?:how many|count|inventory|catalog|stock)\b|"
+            r"\b(?:show|list|check|read)\b[^.!?\n]{0,100}\b(?:products?|cards?|listings?|drafts?|store|shop)\b|"
+            r"\b(?:what|which)\b[^.!?\n]{0,100}\b(?:available|active|drafts?|sold|listings?|products?|cards?)\b",
+            text, re.I))
+
+    @classmethod
+    def _shopify_request(cls, text: str) -> bool:
+        return cls._catalog_request(text, 'shopify')
+
+    @classmethod
+    def _etsy_request(cls, text: str) -> bool:
+        return cls._catalog_request(text, 'etsy')
 
     def respond(self, text: str, agent: str | None, upstream) -> CoreReply:
         self.remember("Semaj", text)
         try:
-            if (re.search(r"\bshopify\b", text, re.I)
+            if (not self._creative_request(text)
+                    and re.search(r"\bshopify\b", text, re.I)
                     and re.search(r"\b(publish|activate|set|make|change|move|archive)\b", text, re.I)
                     and re.search(r"\b(active|draft|archive|archived)\b", text, re.I)):
                 catalog = service_connections.shopify_products()

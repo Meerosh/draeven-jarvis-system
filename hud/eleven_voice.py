@@ -38,7 +38,21 @@ def call(path,payload=None,key=None):
         with CLIENT.open(req,timeout=60) as response:
             return response.read(),response.headers.get_content_type()
     except urllib.error.HTTPError as e:
-        errors={401:'ElevenLabs rejected the API key.',403:'The API key lacks permission for this operation.',429:'ElevenLabs quota or request limit reached.'}
+        # HTTP 401 can also mean quota or permission failure. Never expose raw provider text.
+        try:
+            detail=json.loads(e.read()).get('detail',{})
+            status=detail.get('status','') if isinstance(detail,dict) else ''
+        except (ValueError, OSError):status=''
+        known={
+            'invalid_api_key':'ElevenLabs rejected the API key.',
+            'quota_exceeded':'ElevenLabs has insufficient credits for this speech request.',
+            'missing_permissions':'The ElevenLabs key lacks permission for this operation.',
+            'insufficient_permissions':'The ElevenLabs key lacks permission for this operation.',
+            'voice_not_found':'The selected ElevenLabs voice is unavailable.',
+            'subscription_required':'The selected ElevenLabs voice requires a different subscription.',
+        }
+        if status in known:raise VoiceError(known[status]) from None
+        errors={401:'ElevenLabs could not authorize this operation (HTTP 401).',403:'The API key lacks permission for this operation.',429:'ElevenLabs quota or request limit reached.'}
         raise VoiceError(errors.get(e.code,f'ElevenLabs request failed (HTTP {e.code}). No automatic retry was sent.')) from None
     except Exception:raise VoiceError('Could not reach ElevenLabs. Please try again later.') from None
 def voices(key=None):

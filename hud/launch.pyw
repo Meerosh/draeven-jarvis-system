@@ -10,7 +10,7 @@ CLIENT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 def health(port, path):
     try:
-        with CLIENT.open(f'http://127.0.0.1:{port}{path}',timeout=2) as response:
+        with CLIENT.open(f'http://127.0.0.1:{port}{path}',timeout=10) as response:
             return json.load(response)
     except urllib.error.HTTPError as error:
         try:
@@ -38,7 +38,13 @@ def ensure(port,path,script,log_name,valid):
     if valid(health(port,path)):
         return
     if listening(port):
-        raise RuntimeError(f'Port {port} is occupied but the expected service is not ready. Check {log_name}; no process was stopped.')
+        # The service may still be loading its model (it binds the port first), so wait for it.
+        deadline=time.monotonic()+90
+        while time.monotonic()<deadline:
+            if valid(health(port,path)):
+                return
+            time.sleep(.5)
+        raise RuntimeError(f'Port {port} is occupied but the expected service is not ready after 90 seconds. Check {log_name}; no process was stopped.')
     process=start(script,log_name)
     deadline=time.monotonic()+90
     while time.monotonic()<deadline:
