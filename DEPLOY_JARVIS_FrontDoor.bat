@@ -12,7 +12,7 @@ echo.
 
 REM Set deployment directory
 set DEPLOY_DIR=C:\Users\Arach\my-agent\jarvis-frontdoor
-set REPO_DIR=C:\Users\Arach\my-agent\draeven-jarvis-system
+set REPO_DIR=C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system
 
 REM Check if repository exists
 if not exist "%REPO_DIR%" (

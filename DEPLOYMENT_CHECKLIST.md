@@ -155,7 +155,7 @@ python -c "from pathlib import Path; print(Path('integrations/agent_config.json'
 
 ```powershell
 # Start Draeven if not running
-cd "C:\Users\Arach\Documents\Jarvis\Citadel\desktop\jarvis-hud"
+cd "C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system\hud"
 python run_hud.py
 
 # In Draeven UI, say:

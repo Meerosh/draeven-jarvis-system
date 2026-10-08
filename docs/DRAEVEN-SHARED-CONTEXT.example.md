@@ -30,7 +30,7 @@ This record gives Draeven's providers the same safe operating baseline. It conta
 
 - `C:\Users\Arach\my-agent` is the canonical live Draeven/JARVIS runtime.
 - `C:\Users\Arach\Documents\Jarvis` is the canonical knowledge vault.
-- `C:\Users\Arach\Documents\Jarvis\Citadel\desktop\jarvis-hud` is the live Draeven HUD.
+- `C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system\hud` is the live Draeven HUD.
 - `C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system` is the maintained recovery and review checkout for Semaj's Draeven GitHub repository. It mirrors the current HUD, Front Door, routing, control-plane source and tests without credentials or live business records.
 - Draeven's approval-gated repository worker manages additional checkouts under `C:\Users\Arach\Documents\Jarvis\Citadel\repositories`.
 - `C:\Users\Arach\jarvis-lumen-system` is legacy reference material until reconciled.

@@ -5,7 +5,7 @@
 ### 1. Pre-Deployment (Do Once)
 - [ ] Python 3.11+ installed on Windows
 - [ ] Git installed and configured
-- [ ] Repository cloned to `C:\Users\Arach\my-agent\draeven-jarvis-system`
+- [ ] Repository cloned to `C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system`
 
 ### 2. Initial Deployment
 ```powershell
@@ -13,7 +13,7 @@
 C:\Users\Arach\my-agent\jarvis-frontdoor\DEPLOY_JARVIS_FrontDoor.bat
 
 # Or manual deployment:
-cd C:\Users\Arach\my-agent\draeven-jarvis-system
+cd C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system
 git pull origin main
 cd runtime\frontdoor
 python server.py

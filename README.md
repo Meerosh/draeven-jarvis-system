@@ -8,7 +8,7 @@ It replaces the earlier port-8000 FastAPI prototype. That prototype remains avai
 
 | Component | Repository path | Live location | Port |
 |---|---|---|---:|
-| Draeven HUD | `hud/` | `C:\Users\Arach\Documents\Jarvis\Citadel\desktop\jarvis-hud` | 4783 |
+| Draeven HUD | `hud/` | `C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system\hud` | 4783 |
 | Front Door | `runtime/frontdoor/` | `C:\Users\Arach\my-agent\jarvis-frontdoor` | 4719 |
 | Laya router | `runtime/laya-engine/` | `C:\Users\Arach\my-agent\laya-engine` | 8090 |
 | Wright tools | `runtime/control-plane/` | `C:\Users\Arach\my-agent\jarvis-control-plane` | 8091 |

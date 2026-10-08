@@ -22,7 +22,7 @@ Use this if you encounter "Address already in use" errors or after a system rest
 
 ### Option 3: Manual Startup (For Debugging)
 ```batch
-cd C:\Users\Arach\Documents\Jarvis\Citadel\desktop\jarvis-hud
+cd C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system\hud
 python run_hud.py
 ```
 

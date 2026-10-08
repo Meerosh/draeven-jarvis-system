@@ -84,13 +84,13 @@ echo [OK] Logs cleaned
 REM Step 6: Launch Draeven HUD with retry logic
 echo [6/6] Launching Draeven HUD...
 echo [6/6] Launching Draeven HUD... >> "%LOG_FILE%"
-cd /d "C:\Users\Arach\Documents\Jarvis\Citadel\desktop\jarvis-hud"
+cd /d "C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system\hud"
 
 if exist "run_hud.py" (
     echo. >> "%LOG_FILE%"
     echo ✓ Starting: python run_hud.py >> "%LOG_FILE%"
 
-    start "Draeven HUD" /D "C:\Users\Arach\Documents\Jarvis\Citadel\desktop\jarvis-hud" python run_hud.py
+    start "Draeven HUD" /D "C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system\hud" python run_hud.py
 
     echo.
     echo ========================================================================
@@ -111,7 +111,7 @@ if exist "run_hud.py" (
 ) else (
     echo [ERROR] run_hud.py not found
     echo [ERROR] run_hud.py not found >> "%LOG_FILE%"
-    echo Expected location: C:\Users\Arach\Documents\Jarvis\Citadel\desktop\jarvis-hud\run_hud.py
+    echo Expected location: C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system\hud\run_hud.py
     pause
     exit /b 1
 )
