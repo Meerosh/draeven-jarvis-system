@@ -19,8 +19,8 @@ This guide restores the source layout after a computer replacement or damaged ch
 3. Copy `runtime\frontdoor` to `C:\Users\Arach\my-agent\jarvis-frontdoor`.
 4. Copy `runtime\control-plane` to `C:\Users\Arach\my-agent\jarvis-control-plane`.
 5. Copy `runtime\laya-engine` to `C:\Users\Arach\my-agent\laya-engine`.
-6. Copy `runtime\jev_openrouter.py` and `runtime\JARVIS-START.ps1` to `C:\Users\Arach\my-agent`.
-7. Copy `hud` to `C:\Users\Arach\Documents\Jarvis\Citadel\desktop\jarvis-hud`.
+6. Copy `runtime\jev_openrouter.py` to `C:\Users\Arach\my-agent`.
+7. Use `hud` in this repository as the one HUD copy. Start it from `hud\Open Draeven.vbs`, and point the desktop Draeven shortcut at that file.
 8. Restore `DRAEVEN-SHARED-CONTEXT.md` from the vault. The file in `docs` is only a safe example.
 9. Install Python dependencies with `python -m pip install -r requirements.txt`.
 10. Recreate credentials directly in Windows Credential Manager or the provider dashboards. Never restore credentials from Git.
