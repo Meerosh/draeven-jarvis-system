@@ -1,0 +1,114 @@
+{
+  "statusLine": {
+    "enabled": true,
+    "position": "bottom",
+    "height": 24,
+    "backgroundColor": "#1e1e1e",
+    "textColor": "#e0e0e0",
+    "fontSize": 12,
+    "fontFamily": "Menlo, Monaco, Consolas, monospace"
+  },
+  "segments": [
+    {
+      "id": "omniroute-status",
+      "label": "🛣️ OmniRoute",
+      "endpoint": "http://127.0.0.1:20128/health",
+      "pollInterval": 10000,
+      "display": "icon-dot",
+      "colors": {
+        "healthy": "#4caf50",
+        "degraded": "#ff9800",
+        "error": "#f44336"
+      }
+    },
+    {
+      "id": "claude-mem-status",
+      "label": "💾 Claude Mem",
+      "endpoint": "file:///home/claude/.claude-mem/claude-mem.db",
+      "pollInterval": 15000,
+      "display": "icon-dot",
+      "colors": {
+        "ready": "#2196f3",
+        "error": "#f44336"
+      }
+    },
+    {
+      "id": "token-quota",
+      "label": "📊 Tokens",
+      "source": "omniroute",
+      "metric": "quota_percentage",
+      "pollInterval": 30000,
+      "format": "{used}/{total}",
+      "warningThreshold": 75,
+      "criticalThreshold": 90
+    },
+    {
+      "id": "compression-ratio",
+      "label": "⚡ Compression",
+      "source": "omniroute",
+      "metric": "compression_ratio",
+      "pollInterval": 30000,
+      "format": "{ratio}%",
+      "colors": {
+        "good": "#4caf50",
+        "fair": "#ff9800",
+        "poor": "#f44336"
+      }
+    },
+    {
+      "id": "active-providers",
+      "label": "🔄 Providers",
+      "source": "omniroute",
+      "metric": "active_provider_count",
+      "pollInterval": 60000,
+      "format": "{count} active"
+    },
+    {
+      "id": "memory-cache",
+      "label": "🧠 Memory",
+      "source": "claude-mem",
+      "metric": "cache_size",
+      "pollInterval": 45000,
+      "format": "{entries} entries"
+    },
+    {
+      "id": "task-observer",
+      "label": "🔬 Observer",
+      "source": "task-observer",
+      "metric": "observations_pending",
+      "pollInterval": 60000,
+      "format": "{count} pending",
+      "alertThreshold": 10
+    },
+    {
+      "id": "session-time",
+      "label": "⏱️ Session",
+      "type": "timer",
+      "display": "hh:mm:ss"
+    }
+  ],
+  "colors": {
+    "primary": "#2196f3",
+    "success": "#4caf50",
+    "warning": "#ff9800",
+    "error": "#f44336",
+    "info": "#00bcd4"
+  },
+  "interactions": {
+    "clickable": true,
+    "segments": {
+      "omniroute-status": {
+        "action": "open",
+        "target": "http://127.0.0.1:20128/dashboard"
+      },
+      "token-quota": {
+        "action": "command",
+        "command": "jarvis:quota"
+      },
+      "task-observer": {
+        "action": "command",
+        "command": "jarvis:observer review"
+      }
+    }
+  }
+}

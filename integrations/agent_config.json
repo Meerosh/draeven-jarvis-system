@@ -1,0 +1,115 @@
+{
+  "personas": {
+    "engineering-architect": {
+      "name": "Codex Engineer",
+      "provider": "codex",
+      "agent_domain": "engineering",
+      "prompt_override": "Apply engineering domain expertise with focus on architecture decisions",
+      "tools": null,
+      "cost_tier": "standard"
+    },
+    "strategy-lead": {
+      "name": "Sonnet Strategist",
+      "provider": "claude-sonnet",
+      "agent_domain": "strategy",
+      "prompt_override": "Apply strategic thinking with comprehensive research foundation",
+      "tools": null,
+      "cost_tier": "premium"
+    },
+    "creative-director": {
+      "name": "Haiku Creator",
+      "provider": "claude-haiku",
+      "agent_domain": "design",
+      "prompt_override": "Apply creative expertise with rapid iteration",
+      "tools": null,
+      "cost_tier": "economy"
+    },
+    "systems-automator": {
+      "name": "Hermes System",
+      "provider": "hermes",
+      "agent_domain": "engineering",
+      "prompt_override": "Apply systems thinking with local execution capabilities",
+      "tools": null,
+      "cost_tier": "local"
+    },
+    "security-auditor": {
+      "name": "Security Expert",
+      "provider": "codex",
+      "agent_domain": "security",
+      "prompt_override": "Apply security-first mindset to all architectural decisions",
+      "tools": null,
+      "cost_tier": "standard"
+    },
+    "project-coordinator": {
+      "name": "PM Coordinator",
+      "provider": "claude-haiku",
+      "agent_domain": "project-management",
+      "prompt_override": "Coordinate across teams with focus on delivery timelines",
+      "tools": null,
+      "cost_tier": "economy"
+    }
+  },
+  "skill_mappings": {
+    "research_phase": {
+      "skill": "omh-deep-research",
+      "trigger": "unfamiliar_domain",
+      "output": ".omh/research/{slug}-report.md",
+      "description": "Multi-phase web research: decompose \u2192 parallel search \u2192 synthesize \u2192 verify"
+    },
+    "planning_phase": {
+      "skill": "omh-ralplan",
+      "trigger": "needs_architecture",
+      "output": ".omh/plan/{slug}-consensus.md",
+      "description": "Consensus planning: Planner \u2192 Architect \u2192 Critic until agreement"
+    },
+    "interview_phase": {
+      "skill": "omh-deep-interview",
+      "trigger": "vague_requirements",
+      "output": ".omh/interview/{slug}-requirements.md",
+      "description": "Socratic requirements interview with coverage tracking"
+    },
+    "execution_phase": {
+      "skill": "omh-ralph",
+      "trigger": "ready_to_implement",
+      "output": ".omh/execution/{slug}-result.md",
+      "description": "Verified execution: implement \u2192 verify \u2192 iterate until done"
+    },
+    "triage_phase": {
+      "skill": "omh-triage",
+      "trigger": "backlog_review",
+      "output": ".omh/triage/{slug}-consensus.md",
+      "description": "Multi-role consensus triage of issue backlog"
+    },
+    "autopilot": {
+      "skill": "omh-autopilot",
+      "trigger": "end_to_end_workflow",
+      "output": ".omh/autopilot/{slug}-complete.md",
+      "description": "Full pipeline: research \u2192 interview \u2192 planning \u2192 execution"
+    }
+  },
+  "available_domains": [
+    "academic",
+    "design",
+    "engineering",
+    "examples",
+    "finance",
+    "game-development",
+    "gis",
+    "healthcare",
+    "integrations",
+    "marketing",
+    "paid-media",
+    "product",
+    "project-management",
+    "research",
+    "sales",
+    "scripts",
+    "security",
+    "spatial-computing",
+    "specialized",
+    "strategy",
+    "support",
+    "testing"
+  ],
+  "agent_count": 277
+}

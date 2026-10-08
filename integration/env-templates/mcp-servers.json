@@ -1,0 +1,51 @@
+{
+  "omniroute-gateway": {
+    "command": "node",
+    "args": ["modules/OmniRoute/bin/omniroute.mjs", "mcp-server"],
+    "cwd": "/home/claude/draeven-jarvis-system",
+    "enabled": true,
+    "env": {
+      "OMNIROUTE_PORT": "20128",
+      "OMNIROUTE_MCP_ENABLED": "true",
+      "OMNIROUTE_DB_PATH": "~/.omniroute/db",
+      "OMNIROUTE_LOG_LEVEL": "info"
+    },
+    "description": "Unified AI gateway with 358+ providers, quota routing, and compression",
+    "tools_count": 110,
+    "scopes": [
+      "provider-management",
+      "quota-tracking",
+      "routing-strategy",
+      "compression-config",
+      "fallback-management"
+    ]
+  },
+  "claude-mem": {
+    "command": "node",
+    "args": ["modules/claude-mem/dist/mcp-server.js"],
+    "cwd": "/home/claude/draeven-jarvis-system",
+    "enabled": true,
+    "env": {
+      "CLAUDE_MEM_DB_PATH": "~/.claude-mem/claude-mem.db",
+      "CLAUDE_MEM_LOG_LEVEL": "info"
+    },
+    "description": "Persistent memory system for session context and observations",
+    "tools_count": 8,
+    "scopes": [
+      "memory-retrieval",
+      "memory-storage",
+      "query-interface",
+      "observation-logging"
+    ]
+  },
+  "anthropic-mcp-server": {
+    "command": "npx",
+    "args": ["--yes", "@anthropic-ai/mcp-server-anthropic"],
+    "enabled": false,
+    "env": {
+      "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
+    },
+    "description": "Anthropic Model Context Protocol server",
+    "tools_count": 6
+  }
+}

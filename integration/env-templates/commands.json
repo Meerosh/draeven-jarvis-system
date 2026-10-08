@@ -1,0 +1,77 @@
+{
+  "commands": {
+    "jarvis:status": {
+      "description": "Check JARVIS system health, quota status, and active services",
+      "handler": "./integration/scripts/jarvis-status.js",
+      "icon": "🔍",
+      "category": "system",
+      "shortcut": "cmd+shift+j"
+    },
+    "jarvis:optimize": {
+      "description": "Analyze recent token usage and suggest optimizations",
+      "handler": "./integration/scripts/jarvis-optimize.js",
+      "icon": "⚡",
+      "category": "performance"
+    },
+    "jarvis:memory": {
+      "description": "Query and manage Claude Mem session memory",
+      "handler": "./integration/scripts/jarvis-memory.js",
+      "icon": "💾",
+      "category": "memory",
+      "options": {
+        "query": "Search memory",
+        "recent": "Last 10 entries",
+        "stats": "Memory statistics",
+        "clear": "Clear old entries"
+      }
+    },
+    "jarvis:skills": {
+      "description": "List, install, update, or remove JARVIS skills",
+      "handler": "./integration/scripts/jarvis-skills.js",
+      "icon": "🎯",
+      "category": "skills",
+      "options": {
+        "list": "List all skills",
+        "install": "Install from module",
+        "update": "Update existing skill",
+        "remove": "Remove skill"
+      }
+    },
+    "jarvis:route": {
+      "description": "Test OmniRoute provider routing and quota distribution",
+      "handler": "./integration/scripts/jarvis-route.js",
+      "icon": "🛣️",
+      "category": "routing",
+      "options": {
+        "test": "Test provider routing",
+        "quota": "View quota distribution",
+        "fallback": "Test fallback chain",
+        "compress": "Test compression"
+      }
+    },
+    "jarvis:quota": {
+      "description": "View detailed quota breakdown by provider and month",
+      "handler": "./integration/scripts/jarvis-quota.js",
+      "icon": "📊",
+      "category": "quota"
+    },
+    "jarvis:headroom": {
+      "description": "Open Head Room quota tracking dashboard",
+      "handler": "./integration/scripts/jarvis-headroom.js",
+      "icon": "📈",
+      "category": "monitoring"
+    },
+    "jarvis:observer": {
+      "description": "Review Task Observer findings and approve skill improvements",
+      "handler": "./integration/scripts/jarvis-observer.js",
+      "icon": "🔬",
+      "category": "optimization",
+      "options": {
+        "review": "Review pending observations",
+        "approve": "Approve changes",
+        "reject": "Reject changes",
+        "history": "View observation history"
+      }
+    }
+  }
+}

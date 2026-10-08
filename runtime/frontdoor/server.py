@@ -1,4 +1,4 @@
-"""JARVIS front door (v1, 2026-09-22) - one place to talk to JARVIS.
+"""JARVIS front door (v2, 2026-10-05) - one place to talk to JARVIS.
 
 Flow for every request (same pattern as the Jev/Jarvis demo, using the free local Laya model):
   1. Quick vault search (ms)               -> candidate notes
@@ -13,12 +13,41 @@ Flow for every request (same pattern as the Jev/Jarvis demo, using the free loca
 
 Open http://127.0.0.1:4719 . Standard library only.
 """
-import datetime, json, os, re, shutil, subprocess, sys, tempfile, threading, time, urllib.request, uuid
+import datetime, json, os, re, shutil, subprocess, sys, tempfile, threading, time, urllib.request, uuid, logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import socket as _socket
 from provider_gateway import ProviderGateway, ProviderGatewayError
 from shared_context import shared_context_status, with_shared_context
 from repository_worker import RepositoryWorker, RepositoryWorkerError, format_result, parse_repository_request
+
+# Configure structured logging
+def _setup_logging(log_dir):
+    """Setup Python logging with file and console handlers."""
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"frontdoor-{datetime.datetime.now().strftime('%Y-%m-%d')}.log")
+
+    formatter = logging.Formatter(
+        '[%(asctime)s] %(levelname)-8s [%(name)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+    logger = logging.getLogger('jarvis.frontdoor')
+    logger.setLevel(logging.DEBUG)
+    logger.handlers.clear()  # Remove any existing handlers
+
+    # File handler
+    fh = logging.FileHandler(log_file, encoding='utf-8')
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+
+    # Console handler (stderr)
+    ch = logging.StreamHandler(sys.stderr)
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+
+    return logger
 
 class XServer(ThreadingHTTPServer):
     """Refuses to share its port (Windows would otherwise let a 2nd copy bind too)."""
@@ -28,16 +57,58 @@ class XServer(ThreadingHTTPServer):
             self.socket.setsockopt(_socket.SOL_SOCKET, _socket.SO_EXCLUSIVEADDRUSE, 1)
         super().server_bind()
 
-PORT = 4719
-VAULT = r"C:\Users\Arach\Documents\Jarvis"
+PORT = int(os.getenv("JARVIS_FRONTDOOR_PORT", "4719"))
+VAULT = os.getenv("JARVIS_VAULT", r"C:\Users\Arach\Documents\Jarvis")
 HERE = os.path.dirname(os.path.abspath(__file__))
-LAYA_ENGINE = "http://127.0.0.1:8090"
-OLLAMA = "http://127.0.0.1:11434"
+LAYA_ENGINE = os.getenv("JARVIS_LAYA_ENGINE", "http://127.0.0.1:8090")
+OLLAMA = os.getenv("JARVIS_OLLAMA", "http://127.0.0.1:11434")
 NOPROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 GATEWAY = ProviderGateway(HERE)
 SKIP_DIRS = {".obsidian", ".git", ".claude", ".codex", ".copilot", ".opencode", ".agents",
              "__pycache__", "07 - Archive", "node_modules", "tmp_pdf_read", "Claude outputs"}
-PENDING = {}  # confirm-gate: id -> request
+
+# Setup logging
+LOGGER = _setup_logging(os.path.join(HERE, "logs"))
+
+# Thread-safe data structures with TTL support for PENDING
+class PendingGate:
+    """Thread-safe pending confirmations with automatic TTL cleanup."""
+    def __init__(self, ttl_seconds=1800):
+        self.data = {}
+        self.timestamps = {}
+        self.ttl_seconds = ttl_seconds
+        self.lock = threading.RLock()
+
+    def set(self, confirm_id, request):
+        with self.lock:
+            self.data[confirm_id] = request
+            self.timestamps[confirm_id] = time.time()
+            self._cleanup()
+
+    def get(self, confirm_id):
+        with self.lock:
+            self._cleanup()
+            return self.data.get(confirm_id)
+
+    def pop(self, confirm_id, default=None):
+        with self.lock:
+            self._cleanup()
+            self.timestamps.pop(confirm_id, None)
+            return self.data.pop(confirm_id, default)
+
+    def _cleanup(self):
+        """Remove expired entries (called within lock)."""
+        now = time.time()
+        expired = [cid for cid, ts in self.timestamps.items() if now - ts > self.ttl_seconds]
+        for cid in expired:
+            self.data.pop(cid, None)
+            self.timestamps.pop(cid, None)
+            if expired:
+                LOGGER.debug(f"Cleaned up expired pending entry: {cid}")
+
+PENDING = PendingGate(ttl_seconds=int(os.getenv("JARVIS_PENDING_TTL", "1800")))
+HISTORY_LOCK = threading.RLock()
+HISTORY = []  # recent exchanges, restored in the page after a reload
 REPOSITORIES = RepositoryWorker()
 COUNCIL = {
     "lucien": ("claude", "sonnet", "You are Lucien Voss, strategy and research counsel. Test assumptions, compare options, and give a clear recommendation."),
@@ -109,6 +180,40 @@ def search(q, k=5):
 
 NEUTRAL = None
 
+class CircuitBreaker:
+    """Simple circuit breaker for provider fallback handling."""
+    def __init__(self, failure_threshold=3, timeout_seconds=300):
+        self.failure_count = 0
+        self.failure_threshold = failure_threshold
+        self.timeout_seconds = timeout_seconds
+        self.last_failure_time = None
+        self.lock = threading.RLock()
+
+    def record_success(self):
+        with self.lock:
+            self.failure_count = 0
+
+    def record_failure(self):
+        with self.lock:
+            self.failure_count += 1
+            self.last_failure_time = time.time()
+
+    def is_open(self):
+        """Check if circuit is open (too many failures)."""
+        with self.lock:
+            if self.failure_count >= self.failure_threshold:
+                elapsed = time.time() - self.last_failure_time
+                if elapsed < self.timeout_seconds:
+                    return True
+                else:
+                    # Reset after timeout
+                    self.failure_count = 0
+            return False
+
+# Circuit breakers for Jev and Laya
+_jev_breaker = CircuitBreaker(failure_threshold=2)
+_laya_breaker = CircuitBreaker(failure_threshold=3)
+
 def _laya(state, questions):
     """Route via Jev (OpenRouter Llama 3.3 70B) PRIMARY; fall back to local Laya on failure.
     Never loads a second copy of the model here (that doubled RAM use).
@@ -122,40 +227,56 @@ def _laya(state, questions):
             import jev_openrouter
             _laya._jev = jev_openrouter
             _laya._jev_imported = True
-        except ImportError:
+        except ImportError as e:
             _laya._jev = None
             _laya._jev_imported = True
+            LOGGER.debug(f"Jev import failed: {e}")
 
-    # Try Jev (OpenRouter) first
-    if _laya._jev:
+    # Try Jev (OpenRouter) first if circuit is closed
+    if _laya._jev and not _jev_breaker.is_open():
         try:
             jev_result = _laya._jev.call_jev(state, questions)
             if jev_result:
+                _jev_breaker.record_success()
+                LOGGER.debug("Jev route succeeded")
                 return jev_result
-        except Exception:
-            pass  # Fall through to Laya
+        except Exception as e:
+            _jev_breaker.record_failure()
+            LOGGER.warning(f"Jev failed: {e}")
 
-    # Fallback to Laya on port 8090
-    body = json.dumps({"state": state, "questions": questions}).encode()
-    try:
-        req = urllib.request.Request(LAYA_ENGINE + "/predict", body, {"Content-Type": "application/json"})
-        with NOPROXY.open(req, timeout=60) as r:
-            return json.loads(r.read())["answers"]
-    except Exception:
-        # Both failed; try to start Laya engine and return neutral answers
+    # Fallback to Laya on port 8090 if circuit is closed
+    if not _laya_breaker.is_open():
+        body = json.dumps({"state": state, "questions": questions}).encode()
         try:
-            vbs_path = r"C:\Users\Arach\my-agent\laya-engine\JARVIS Laya Engine.vbs"
-            subprocess.Popen(["wscript", vbs_path])
-        except Exception:
-            pass
-        out = {}
-        for k, q in questions.items():
-            if q["type"] == "choice":
-                first = next(iter(q["criteria"]))
-                out[k] = {"choice": {"lane": "do_work", "business": "none"}.get(k, first), "confidence": 0.0}
-            else:
-                out[k] = {"noul": 0.5 if k == "stakes" else 0.0, "confidence": 0.0}  # unknown stakes -> ask first
-        return out
+            req = urllib.request.Request(LAYA_ENGINE + "/predict", body, {"Content-Type": "application/json"})
+            with NOPROXY.open(req, timeout=60) as r:
+                result = json.loads(r.read())["answers"]
+                _laya_breaker.record_success()
+                LOGGER.debug("Laya route succeeded")
+                return result
+        except Exception as e:
+            _laya_breaker.record_failure()
+            LOGGER.warning(f"Laya route failed: {e}")
+
+    # Both providers failed or circuits are open; try to start Laya and return neutral answers
+    LOGGER.error("Both Jev and Laya failed; returning neutral reflex answers")
+    try:
+        laya_engine_path = os.getenv("JARVIS_LAYA_ENGINE_PATH", r"C:\Users\Arach\my-agent\laya-engine\JARVIS Laya Engine.vbs")
+        if os.path.exists(laya_engine_path):
+            subprocess.Popen(["wscript", laya_engine_path], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+            LOGGER.info("Attempted to restart Laya engine")
+    except Exception as e:
+        LOGGER.debug(f"Could not restart Laya: {e}")
+
+    # Return neutral answers when all routing fails
+    out = {}
+    for k, q in questions.items():
+        if q["type"] == "choice":
+            first = next(iter(q["criteria"]))
+            out[k] = {"choice": {"lane": "do_work", "business": "none"}.get(k, first), "confidence": 0.0}
+        else:
+            out[k] = {"noul": 0.5 if k == "stakes" else 0.0, "confidence": 0.0}  # unknown stakes -> ask first
+    return out
 
 QWORDS = ("what", "whats", "what's", "how", "why", "when", "where", "who", "which", "did", "do", "does", "is", "are",
           "was", "were", "have", "has", "can you tell", "tell me", "remind me", "show me", "pull up", "list", "explain")
@@ -302,19 +423,23 @@ def handle(request, d=None, agent=None, context=None):
         decision = {"lane": "repository", "stakes": 1.0 if action in {"clone", "implement", "publish"} else 0.0}
         try:
             if action == "list":
+                LOGGER.info("Repository list requested")
                 return decision, format_result(REPOSITORIES.list()), "repository worker (read only)", None
             if action == "inspect":
+                LOGGER.info(f"Repository inspect requested: {repo_request['name']}")
                 return decision, format_result(REPOSITORIES.inspect(repo_request["name"])), "repository worker (read only)", None
         except RepositoryWorkerError as exc:
+            LOGGER.error(f"Repository action failed: {exc}")
             return decision, str(exc), "repository worker (error)", None
         pid = uuid.uuid4().hex[:8]
-        PENDING[pid] = {"kind": "repository", **repo_request}
+        PENDING.set(pid, {"kind": "repository", **repo_request})
         if action == "clone":
             description = f"clone {repo_request['url']} into Draeven's managed repository workspace"
         elif action == "implement":
             description = f"let Codex edit {repo_request['name']} locally and leave a reviewable uncommitted diff"
         else:
             description = f"commit and push the reviewed changes in {repo_request['name']}"
+        LOGGER.info(f"Repository {action} pending confirmation: {pid}")
         return decision, f"Ready to {description}. Confirm to continue.", "repository worker (waiting for confirmation)", pid
 
     timing = {"start": time.time()}
@@ -354,13 +479,14 @@ def handle(request, d=None, agent=None, context=None):
         return d, answer, route + f" (council:{agent}; advice only)", None
     if lane == "act (needs confirm)":
         pid = uuid.uuid4().hex[:8]
-        PENDING[pid] = request
+        PENDING.set(pid, request)
         timing["claude_start"] = time.time()
         draft, route = provider_answer(request, d, PERSONA + "This request has real-world stakes. DO NOT take any action, send anything, "
                            "or change any file. Produce only the draft or plan and list exactly what would happen "
                            f"if Semaj confirms.\n\nRequest: {model_request}", provider="claude", model="haiku")
         timing["claude_end"] = time.time()
         d["timing_ms"] = {k: int((v - timing["start"]) * 1000) for k, v in timing.items() if k != "start"}
+        LOGGER.info(f"High-stakes action pending confirmation: {pid}")
         return d, draft, route + " (draft only - waiting for your Confirm)", pid
     if notes and (lane == "recall" or d["vault_has_it"] >= 0.5):
         best = [n for n in notes if n["path"] == d["vault_note"]] + [n for n in notes if n["path"] != d["vault_note"]]
@@ -388,11 +514,23 @@ def handle(request, d=None, agent=None, context=None):
     return d, answer, route + " (draft only)", None
 
 def log(request, d, route, answer):
+    """Log request to vault markdown and structured logging."""
     folder = os.path.join(VAULT, "00 - Inbox", "JARVIS Log")
     os.makedirs(folder, exist_ok=True)
     now = datetime.datetime.now()
-    with open(os.path.join(folder, now.strftime("%Y-%m-%d") + ".md"), "a", encoding="utf-8") as f:
-        f.write(f"\n## {now:%H:%M} - {request[:80]}\n- reflex: {json.dumps(d)}\n- route: {route}\n\n{answer[:3000]}\n")
+    log_file = os.path.join(folder, now.strftime("%Y-%m-%d") + ".md")
+
+    # Write to vault markdown
+    try:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"\n## {now:%H:%M} - {request[:80]}\n- reflex: {json.dumps(d)}\n- route: {route}\n\n{answer[:3000]}\n")
+    except Exception as e:
+        LOGGER.warning(f"Failed to write vault log: {e}")
+
+    # Log to structured logging
+    LOGGER.info(f"Request: {request[:100]} | Route: {route}")
+    if d.get("timing_ms"):
+        LOGGER.debug(f"Timings: {d['timing_ms']}")
 
 def _restart():
     time.sleep(0.5)
@@ -414,11 +552,19 @@ class H(BaseHTTPRequestHandler):
             self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
         elif self.path == "/history":
-            self._json(200, HISTORY)
+            with HISTORY_LOCK:
+                self._json(200, list(HISTORY))
         elif self.path == "/health":
-            self._json(200, {"ok": True, "notes_indexed": len(_index),
-                             "providers": GATEWAY.status(), "usage": GATEWAY.usage_status(),
-                             "shared_context": shared_context_status()})
+            health = {
+                "ok": True,
+                "notes_indexed": len(_index),
+                "providers": GATEWAY.status(),
+                "usage": GATEWAY.usage_status(),
+                "shared_context": shared_context_status(),
+                "pending_count": len(PENDING.data),
+                "history_count": len(HISTORY)
+            }
+            self._json(200, health)
         else:
             self._json(404, {"error": "not found"})
 
@@ -435,26 +581,35 @@ class H(BaseHTTPRequestHandler):
                 d, ans, route, pid = handle(text, req.get("reflex"), agent, req.get("context"))
                 req_total = int((time.time() - req_start) * 1000)
                 log(text, d, route, ans)
-                HISTORY.append({"q": text, "a": ans, "route": route, "confirm_id": pid})
-                del HISTORY[:-20]
+
+                # Thread-safe history update
+                with HISTORY_LOCK:
+                    HISTORY.append({"q": text, "a": ans, "route": route, "confirm_id": pid})
+                    del HISTORY[:-20]
+
+                # Log timing with structured logging
                 timing_str = ""
                 if "timing_ms" in d:
-                    timing_str = " | Timing: " + " > ".join(f"{k}={v}ms" for k, v in sorted(d["timing_ms"].items()))
-                timing_log = f"[TIMING] {text[:60]} | Total={req_total}ms{timing_str}\n"
-                sys.stderr.write(timing_log)
-                with open(os.path.join(HERE, "timing.log"), "a", encoding="utf-8") as tf:
-                    tf.write(timing_log)
+                    timing_str = " > ".join(f"{k}={v}ms" for k, v in sorted(d["timing_ms"].items()))
+                    LOGGER.info(f"Request timing: {text[:60][:60]} | Total={req_total}ms | {timing_str}")
+                else:
+                    LOGGER.info(f"Request completed: {text[:60]} | Total={req_total}ms")
+
                 self._json(200, {"reflex": d, "answer": ans, "route": route, "confirm_id": pid})
             elif self.path == "/reflex":
                 text = req["text"].strip()
                 self._json(200, reflex(text, search(text)))
             elif self.path == "/restart":
+                LOGGER.info("Restart requested")
                 self._json(200, {"restarting": True})
                 threading.Thread(target=_restart, daemon=True).start()
             elif self.path == "/confirm":
-                text = PENDING.pop(req["id"], None)
+                confirm_id = req["id"]
+                text = PENDING.pop(confirm_id, None)
                 if not text:
+                    LOGGER.warning(f"Confirm requested for missing pending ID: {confirm_id}")
                     return self._json(404, {"error": "nothing pending with that id"})
+                LOGGER.info(f"Confirmation received for: {str(text)[:100]}")
                 if isinstance(text, dict) and text.get("kind") == "repository":
                     try:
                         if text["action"] == "clone":
@@ -466,6 +621,7 @@ class H(BaseHTTPRequestHandler):
                         else:
                             raise RepositoryWorkerError("Unknown repository action.")
                     except RepositoryWorkerError as exc:
+                        LOGGER.error(f"Repository action failed: {exc}")
                         return self._json(409, {"error": str(exc)})
                     return self._json(200, {"answer": format_result(result), "route": "repository worker",
                                             "receipt": {"id": "repository-" + uuid.uuid4().hex[:12],
@@ -480,6 +636,7 @@ class H(BaseHTTPRequestHandler):
             else:
                 self._json(404, {"error": "not found"})
         except Exception as e:
+            LOGGER.exception(f"Unhandled error in POST handler: {e}")
             self._json(500, {"error": repr(e)})
 
     def log_message(self, fmt, *a):
@@ -488,30 +645,41 @@ class H(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     if "--wait" in sys.argv:
         time.sleep(2)  # let the old copy release the port
-        sys.stdout = sys.stderr = open(os.path.join(HERE, "frontdoor-live.log"), "a", buffering=1, encoding="utf-8")
     try:
         srv = XServer(("127.0.0.1", PORT), H)
     except OSError:
-        print("already running"); sys.exit(0)
+        LOGGER.critical("Failed to bind to port (already running?)")
+        sys.exit(1)
+
+    LOGGER.info(f"JARVIS Front Door started on port {PORT}")
+    LOGGER.info(f"Vault: {VAULT}")
+    LOGGER.info(f"Laya Engine: {LAYA_ENGINE}")
+
     build_index()
+    LOGGER.info(f"Vault index built: {len(_index)} markdown files")
+
     try:  # restore today's conversation so a restart/reload doesn't lose answers
         lp = os.path.join(VAULT, "00 - Inbox", "JARVIS Log", datetime.datetime.now().strftime("%Y-%m-%d") + ".md")
-        for blk in open(lp, encoding="utf-8").read().split("\n## ")[1:]:
-            head, _, rest = blk.partition("\n")
-            q = head.split(" - ", 1)[-1]
-            route = re.search(r"- route: (.*)", rest)
-            ans = rest.split("\n\n", 1)[-1].strip()
-            HISTORY.append({"q": q, "a": ans, "route": route.group(1) if route else "", "confirm_id": None})
-        # drop half-sentences left by the old voice bug (an entry that a later entry merely extends)
-        keep = [h for i, h in enumerate(HISTORY)
-                if not any(o["q"].startswith(h["q"]) and o["q"] != h["q"] for o in HISTORY[i + 1:])]
-        seen, HISTORY[:] = set(), []
-        for h in keep:
-            if h["q"] not in seen:
-                seen.add(h["q"]); HISTORY.append(h)
-        del HISTORY[:-20]
-    except OSError:
-        pass
+        with HISTORY_LOCK:
+            for blk in open(lp, encoding="utf-8").read().split("\n## ")[1:]:
+                head, _, rest = blk.partition("\n")
+                q = head.split(" - ", 1)[-1]
+                route = re.search(r"- route: (.*)", rest)
+                ans = rest.split("\n\n", 1)[-1].strip()
+                HISTORY.append({"q": q, "a": ans, "route": route.group(1) if route else "", "confirm_id": None})
+            # drop half-sentences left by the old voice bug (an entry that a later entry merely extends)
+            keep = [h for i, h in enumerate(HISTORY)
+                    if not any(o["q"].startswith(h["q"]) and o["q"] != h["q"] for o in HISTORY[i + 1:])]
+            seen, HISTORY[:] = set(), []
+            for h in keep:
+                if h["q"] not in seen:
+                    seen.add(h["q"]); HISTORY.append(h)
+            del HISTORY[:-20]
+        LOGGER.info(f"Restored {len(HISTORY)} conversation turns from today")
+    except OSError as e:
+        LOGGER.debug(f"No previous history to restore: {e}")
+
     open(os.path.join(HERE, "status.txt"), "w").write(f"{datetime.datetime.now():%H:%M:%S} READY http://127.0.0.1:{PORT} notes={len(_index)}\n")
     print(f"JARVIS front door on http://127.0.0.1:{PORT} ({len(_index)} notes indexed)")
+    LOGGER.info("Server ready, waiting for requests")
     srv.serve_forever()
