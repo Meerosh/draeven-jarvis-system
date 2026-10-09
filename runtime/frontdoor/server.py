@@ -312,6 +312,32 @@ def reflex(request, notes):
 CLAUDE_LOCK = threading.Lock()
 HISTORY = []  # recent exchanges, restored in the page after a reload
 
+# OmniRoute (local gateway, default http://127.0.0.1:20128/v1) fronts the Claude
+# lane so requests share OmniRoute's routing and usage tracking. Disabled by
+# default in provider_policy.json; the key comes from the environment only.
+OMNIROUTE_MODELS = {"haiku": "cc/claude-haiku-4-5-20251001", "sonnet": "cc/claude-sonnet-4-6"}
+
+def ask_omniroute(prompt, model=None):
+    key = os.environ.get("OMNIROUTE_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("OMNIROUTE_API_KEY is not set in the environment.")
+    base = os.environ.get("OMNIROUTE_URL", "http://127.0.0.1:20128/v1").rstrip("/")
+    body = json.dumps({
+        "model": OMNIROUTE_MODELS.get(model or "haiku", OMNIROUTE_MODELS["haiku"]),
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 2048,
+    }).encode("utf-8")
+    req = urllib.request.Request(base + "/chat/completions", data=body, method="POST",
+                                 headers={"Authorization": f"Bearer {key}",
+                                          "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        # Report the status only; never echo the request or headers.
+        raise RuntimeError(f"OmniRoute returned HTTP {e.code}") from e
+    return ((data.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip() or "[no output]"
+
 def ask_claude(prompt, model=None):
     exe = shutil.which("claude") or shutil.which("claude.cmd")
     if not exe:
@@ -376,7 +402,7 @@ def provider_answer(request, d, prompt, *, status_request=False, provider=None, 
     """Select exactly one provider, enforce limits, and attach usage metadata."""
     if provider is None:
         provider, model = GATEWAY.choose(d["lane"], request, status_request=status_request)
-    runners = {"claude": ask_claude, "codex": ask_codex, "hermes": ask_hermes}
+    runners = {"claude": ask_claude, "codex": ask_codex, "hermes": ask_hermes, "omniroute": ask_omniroute}
     if provider not in runners:
         raise ProviderGatewayError(f"No text runner is registered for {provider}.")
     # Every provider receives the same small, secret-free operating baseline.
