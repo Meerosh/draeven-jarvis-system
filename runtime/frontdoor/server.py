@@ -356,6 +356,14 @@ def ask_claude(prompt, model=None):
     except subprocess.TimeoutExpired:
         return "[Claude took longer than 10 minutes; try a smaller request.]"
 
+def ask_claude_first(prompt, model=None):
+    """OmniRoute first; direct Claude only when OmniRoute cannot answer."""
+    try:
+        return ask_omniroute(prompt, model)
+    except Exception as e:
+        print(f"[omniroute] unavailable, answering with direct Claude: {e}", flush=True)
+        return ask_claude(prompt, model)
+
 def ask_codex(prompt, model=None):
     """Run Codex ephemerally with a read-only sandbox and capture only its final answer."""
     exe = shutil.which("codex") or shutil.which("codex.exe")
@@ -402,7 +410,7 @@ def provider_answer(request, d, prompt, *, status_request=False, provider=None, 
     """Select exactly one provider, enforce limits, and attach usage metadata."""
     if provider is None:
         provider, model = GATEWAY.choose(d["lane"], request, status_request=status_request)
-    runners = {"claude": ask_claude, "codex": ask_codex, "hermes": ask_hermes, "omniroute": ask_omniroute}
+    runners = {"claude": ask_claude_first, "codex": ask_codex, "hermes": ask_hermes, "omniroute": ask_claude_first}
     if provider not in runners:
         raise ProviderGatewayError(f"No text runner is registered for {provider}.")
     # Every provider receives the same small, secret-free operating baseline.
@@ -521,7 +529,7 @@ def handle(request, d=None, agent=None, context=None):
                              f"{notes_block(best[:3])}\n\nQuestion: {request}")
             if ans:
                 return d, ans, "ollama + vault notes (local, free)", None
-        return d, ask_claude(PERSONA + "Answer from the vault. Start with these notes, open others only if needed:\n"
+        return d, ask_claude_first(PERSONA + "Answer from the vault. Start with these notes, open others only if needed:\n"
                              + "\n".join(n["path"] for n in best) + f"\n\nQuestion: {request}", model="sonnet"), "claude + vault notes", None
     if lane == "chat" or (d["routine"] >= 0.6 and d["is_code"] < 0.5 and d["stakes"] < 0.5):
         ans = ask_ollama(PERSONA + request)
