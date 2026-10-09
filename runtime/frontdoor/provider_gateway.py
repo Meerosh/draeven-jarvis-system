@@ -69,6 +69,10 @@ class ProviderGateway:
             if providers["hermes"]["enabled"]:
                 return "hermes", providers["hermes"].get("default_model")
         model_key = "complex_model" if status_request or len(request) > 1800 else "default_model"
+        # Claude-lane work goes through the local OmniRoute gateway when enabled,
+        # so it shares OmniRoute's routing and usage tracking.
+        if providers.get("omniroute", {}).get("enabled"):
+            return "omniroute", providers["omniroute"].get(model_key)
         return "claude", providers["claude"].get(model_key)
 
     def run(

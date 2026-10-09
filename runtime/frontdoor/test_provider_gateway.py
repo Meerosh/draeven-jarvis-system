@@ -36,6 +36,13 @@ class ProviderGatewayTests(unittest.TestCase):
         self.assertEqual(self.gateway.choose("recall", "answer this"), ("claude", "haiku"))
         self.assertEqual(self.gateway.choose("recall", "status", status_request=True), ("claude", "sonnet"))
 
+    def test_claude_lane_routes_through_omniroute_when_enabled(self):
+        policy = json.loads((self.root / "provider_policy.json").read_text(encoding="utf-8"))
+        policy["providers"]["omniroute"] = {"enabled": True, "cloud": True, "default_model": "haiku", "complex_model": "sonnet"}
+        (self.root / "provider_policy.json").write_text(json.dumps(policy), encoding="utf-8")
+        gateway = ProviderGateway(self.root)
+        self.assertEqual(gateway.choose("standard", "hello")[0], "omniroute")
+
     def test_disabled_hermes_is_not_selected(self):
         self.assertEqual(self.gateway.choose("do_work", "research this"), ("claude", "haiku"))
 
