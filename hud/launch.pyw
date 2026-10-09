@@ -3,7 +3,7 @@ from pathlib import Path
 import ctypes, json, socket, subprocess, sys, time, urllib.request, urllib.error, webbrowser
 
 ROOT = Path(__file__).resolve().parent
-FRONTDOOR = Path.home() / 'my-agent' / 'jarvis-frontdoor' / 'server.py'
+FRONTDOOR = ROOT.parent / 'runtime' / 'frontdoor' / 'server.py'
 LAYA = Path.home() / 'my-agent' / 'laya-engine' / 'laya_engine_server.py'
 WRIGHT = Path.home() / 'my-agent' / 'jarvis-control-plane' / 'wright_tools_server.py'
 CLIENT = urllib.request.build_opener(urllib.request.ProxyHandler({}))

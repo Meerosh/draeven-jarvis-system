@@ -53,6 +53,8 @@ def _extract_json(text):
     except json.JSONDecodeError:
         return None
 
+_missing_key_logged = False
+
 def call_jev(state, questions):
     """Route request via OpenRouter Llama 3.3 70B.
 
@@ -65,7 +67,10 @@ def call_jev(state, questions):
         or None on failure (fall back to Laya)
     """
     if not OPENROUTER_API_KEY:
-        _log("ERROR: OPENROUTER_API_KEY not set - falling back to Laya")
+        global _missing_key_logged
+        if not _missing_key_logged:
+            _missing_key_logged = True
+            _log("INFO: OPENROUTER_API_KEY not set - routing via Laya (logged once)")
         return None
 
     # Build the routing prompt

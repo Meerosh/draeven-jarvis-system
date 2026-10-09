@@ -1,3 +1,4 @@
 Set sh = CreateObject("WScript.Shell")
-script = "C:\Users\Arach\my-agent\JARVIS-START.ps1"
-sh.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File """ & script & """", 0, False
+here = "C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system\runtime\frontdoor"
+logf = "C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system\hud\jarvis-start.log"
+sh.Run "cmd /c cd /d """ & here & """ && """"C:\Python314\pythonw.exe"""" -u server.py >> """ & logf & """ 2>&1", 0, False
