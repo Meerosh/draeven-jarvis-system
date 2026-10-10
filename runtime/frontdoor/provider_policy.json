@@ -14,6 +14,7 @@
     "hermes": {"enabled": true, "cloud": false, "default_model": "ornith-final"},
     "openai_images": {"enabled": true, "cloud": true, "reason": null},
     "midjourney_manual": {"enabled": true, "cloud": false, "reason": "Official Midjourney automation is unavailable; export prompts for manual submission."},
-    "omniroute": {"enabled": true, "cloud": true, "default_model": "haiku", "complex_model": "sonnet"}
+    "omniroute": {"enabled": true, "cloud": true, "default_model": "haiku", "complex_model": "sonnet"},
+    "gemini": {"enabled": true, "cloud": true, "default_model": "gemini-flash", "complex_model": "gemini-flash"}
   }
 }

@@ -1,0 +1,43 @@
+WHERE EVERYTHING IS (as of 2026-10-10)
+
+DRAEVEN (running system)
+  Main code (Git repo, branch omniroute-frontdoor):
+    C:\Users\Arach\Documents\Jarvis\Citadel\desktop\draeven-jarvis-system
+  Restart Draeven:
+    ...\draeven-jarvis-system\runtime\frontdoor\Restart JARVIS.bat
+  Front Door (answers your questions):
+    ...\draeven-jarvis-system\runtime\frontdoor
+  HUD (the window you open):
+    ...\draeven-jarvis-system\hud
+  Vault (your notes Draeven searches):
+    C:\Users\Arach\Documents\Jarvis
+  OmniRoute settings (.env):
+    C:\Users\Arach\my-agent\omniroute
+  Laya engine:
+    C:\Users\Arach\my-agent\laya-engine
+  Wright tools and OpenAI image code:
+    C:\Users\Arach\my-agent\jarvis-control-plane
+  Voice test (Dia):
+    C:\Users\Arach\my-agent\voice-test
+
+BUSINESS
+  Out & Legendary website:
+    C:\Users\Arach\my-agent\outandlegendary-site
+  Out & Legendary card renderer and outputs:
+    C:\Users\Arach\my-agent\oal-renderer
+  Brand style sheet:
+    ...\oal-renderer\output\OAL-BRAND-STYLE-REFERENCE-SHEET-v2.png
+  Leather card:
+    ...\outandlegendary-site\public\assets\leather-card.png
+
+OLD OR TO CLEAN UP (do not use)
+  Old Front Door copy:
+    C:\Users\Arach\my-agent\jarvis-frontdoor
+  Holding folder for review:
+    C:\Users\Arach\my-agent\_to_delete
+  Stray backup folder:
+    C:\Users\Arach\Documents\Jarvis\Citadel\desktop\omniroute-backup-192021
+  Desktop helpers:
+    C:\Users\Arach\OneDrive\Desktop\Switch Front Door.bat and .ps1
+  API key file (move it out, then delete):
+    C:\Users\Arach\OneDrive\Desktop\OpenRouter API key.txt

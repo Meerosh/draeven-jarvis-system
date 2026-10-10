@@ -69,6 +69,11 @@ class ProviderGateway:
             if providers["hermes"]["enabled"]:
                 return "hermes", providers["hermes"].get("default_model")
         model_key = "complex_model" if status_request or len(request) > 1800 else "default_model"
+        # Large or status-style cloud work goes to Gemini (through OmniRoute) when it is
+        # enabled. Everything else stays on the OmniRoute-first Claude lane below.
+        gemini = providers.get("gemini", {})
+        if gemini.get("enabled") and (status_request or len(request) > 1800):
+            return "gemini", gemini.get(model_key)
         # Claude-lane work goes through the local OmniRoute gateway when enabled,
         # so it shares OmniRoute's routing and usage tracking.
         if providers.get("omniroute", {}).get("enabled"):

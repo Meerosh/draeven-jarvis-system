@@ -43,6 +43,25 @@ class ProviderGatewayTests(unittest.TestCase):
         gateway = ProviderGateway(self.root)
         self.assertEqual(gateway.choose("standard", "hello")[0], "omniroute")
 
+    def test_large_cloud_work_routes_to_gemini_when_enabled(self):
+        policy = json.loads((self.root / "provider_policy.json").read_text(encoding="utf-8"))
+        policy["providers"]["omniroute"] = {"enabled": True, "cloud": True, "default_model": "haiku", "complex_model": "sonnet"}
+        policy["providers"]["gemini"] = {"enabled": True, "cloud": True, "default_model": "gemini-flash", "complex_model": "gemini-flash"}
+        (self.root / "provider_policy.json").write_text(json.dumps(policy), encoding="utf-8")
+        gateway = ProviderGateway(self.root)
+        self.assertEqual(gateway.choose("do_work", "x" * 2000), ("gemini", "gemini-flash"))
+        self.assertEqual(gateway.choose("recall", "status", status_request=True), ("gemini", "gemini-flash"))
+        # Short everyday requests stay on the OmniRoute Claude lane; code stays on Codex.
+        self.assertEqual(gateway.choose("do_work", "hello"), ("omniroute", "haiku"))
+        self.assertEqual(gateway.choose("code_or_system", "x" * 2000), ("codex", None))
+
+    def test_gemini_disabled_keeps_large_work_on_claude_lane(self):
+        policy = json.loads((self.root / "provider_policy.json").read_text(encoding="utf-8"))
+        policy["providers"]["gemini"] = {"enabled": False, "cloud": True, "default_model": "gemini-flash", "complex_model": "gemini-flash"}
+        (self.root / "provider_policy.json").write_text(json.dumps(policy), encoding="utf-8")
+        gateway = ProviderGateway(self.root)
+        self.assertEqual(gateway.choose("do_work", "x" * 2000)[0], "claude")
+
     def test_disabled_hermes_is_not_selected(self):
         self.assertEqual(self.gateway.choose("do_work", "research this"), ("claude", "haiku"))
 

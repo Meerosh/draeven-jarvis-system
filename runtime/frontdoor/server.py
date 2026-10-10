@@ -315,7 +315,10 @@ HISTORY = []  # recent exchanges, restored in the page after a reload
 # OmniRoute (local gateway, default http://127.0.0.1:20128/v1) fronts the Claude
 # lane so requests share OmniRoute's routing and usage tracking. Disabled by
 # default in provider_policy.json; the key comes from the environment only.
-OMNIROUTE_MODELS = {"haiku": "cc/claude-haiku-4-5-20251001", "sonnet": "cc/claude-sonnet-4-6"}
+OMNIROUTE_MODELS = {"haiku": "cc/claude-haiku-4-5-20251001", "sonnet": "cc/claude-sonnet-4-6",
+                    # Gemini through OmniRoute (provider alias "gemini", Google AI Studio key added
+                    # by the user in the OmniRoute dashboard; free tier is Flash-family only).
+                    "gemini-flash": "gemini/gemini-3.8-flash", "gemini-pro": "gemini/gemini-3.1-pro-preview"}
 
 def ask_omniroute(prompt, model=None):
     key = os.environ.get("OMNIROUTE_API_KEY", "").strip()
@@ -364,6 +367,18 @@ def ask_claude_first(prompt, model=None):
         print(f"[omniroute] unavailable, answering with direct Claude: {e}", flush=True)
         return ask_claude(prompt, model)
 
+def ask_gemini_first(prompt, model=None):
+    """Gemini via OmniRoute for large/complex cloud work; Claude answers if Gemini is not available.
+
+    Gemini is not connected until its key is added in the OmniRoute dashboard, so any
+    failure here falls back to the OmniRoute-first Claude path instead of surfacing an error.
+    """
+    try:
+        return ask_omniroute(prompt, model or "gemini-flash")
+    except Exception as e:
+        print(f"[gemini] unavailable, answering with Claude: {e}", flush=True)
+        return ask_claude_first(prompt, "sonnet" if model == "gemini-pro" else "haiku")
+
 def ask_codex(prompt, model=None):
     """Run Codex ephemerally with a read-only sandbox and capture only its final answer."""
     exe = shutil.which("codex") or shutil.which("codex.exe")
@@ -410,7 +425,8 @@ def provider_answer(request, d, prompt, *, status_request=False, provider=None, 
     """Select exactly one provider, enforce limits, and attach usage metadata."""
     if provider is None:
         provider, model = GATEWAY.choose(d["lane"], request, status_request=status_request)
-    runners = {"claude": ask_claude_first, "codex": ask_codex, "hermes": ask_hermes, "omniroute": ask_claude_first}
+    runners = {"claude": ask_claude_first, "codex": ask_codex, "hermes": ask_hermes, "omniroute": ask_claude_first,
+               "gemini": ask_gemini_first}
     if provider not in runners:
         raise ProviderGatewayError(f"No text runner is registered for {provider}.")
     # Every provider receives the same small, secret-free operating baseline.
@@ -669,6 +685,10 @@ class H(BaseHTTPRequestHandler):
                     "receipt": {"id": receipt_id, "status": "approval_recorded", "executed": False}})
             else:
                 self._json(404, {"error": "not found"})
+        except ProviderGatewayError as e:
+            # Usage-control refusals (size/daily limit) are client-facing, not server faults.
+            LOGGER.warning(f"Provider gateway refused request: {e}")
+            self._json(400, {"error": str(e)})
         except Exception as e:
             LOGGER.exception(f"Unhandled error in POST handler: {e}")
             self._json(500, {"error": repr(e)})
