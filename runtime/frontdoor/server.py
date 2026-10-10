@@ -507,6 +507,19 @@ def handle(request, d=None, agent=None, context=None):
         model_request = ("Recent Draeven conversation:\n" + context.strip()[:8000]
                          + "\n\nCurrent request:\n" + request)
     timing["routing_done"] = time.time()
+    # Explicit override: start a message with "gemini:" to answer it with Gemini through OmniRoute.
+    # It is visible in OmniRoute's request logs and in this server's log as route "gemini/...".
+    if request.strip().lower().startswith("gemini:"):
+        asked = request.strip()[len("gemini:"):].strip()
+        if asked:
+            timing["claude_start"] = time.time()
+            answer, route = provider_answer(
+                request, d,
+                PERSONA + "Answer or draft the request. Do not edit files, run commands, or perform external actions.\n\n" + asked,
+                provider="gemini", model="gemini-flash")
+            timing["claude_end"] = time.time()
+            d["timing_ms"] = {k: int((v - timing["start"]) * 1000) for k, v in timing.items() if k != "start"}
+            return d, answer, route + " (draft only)", None
     if lane == "chat":
         hour = datetime.datetime.now().hour
         part = "morning" if hour < 12 else "afternoon" if hour < 18 else "evening"
